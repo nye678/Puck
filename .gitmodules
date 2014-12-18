@@ -1,0 +1,6 @@
+[submodule "jrmem"]
+	path = jrmem
+	url = https://github.com/nye678/jrmem
+[submodule "jrmath"]
+	path = jrmath
+	url = https://github.com/nye678/jrmath
