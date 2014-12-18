@@ -69,3 +69,9 @@ $RECYCLE.BIN/
 *.msi
 *.msm
 *.msp
+
+*.dmp
+*.suo
+*.pdb
+Build
+*.sublime-workspace
