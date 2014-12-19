@@ -34,7 +34,6 @@ int pboIndex = 0;
 
 GLuint texture;
 GLint texLoc;
-GLint cameraLoc;
 
 IXAudio2* xaudio2;
 IXAudio2MasteringVoice* masterVoice;
@@ -50,8 +49,6 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 GLuint CreateBasicShader(const char* vertexCode, const char* fragmentCode);
 GLuint CompileShader(GLenum type, const char* code);
 size_t LoadTextFile(const char* fileName, char* &buffer);
-
-mat4 camera = OrthoProjection(0.0f, 1.0f, 0.0f, -1.0f, -0.1f, 10000.0f);
 
 int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showCmd)
 {
@@ -251,7 +248,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			glUseProgram(program);
 
 			texLoc = glGetUniformLocation(program, "tex");
-			cameraLoc = glGetUniformLocation(program, "camera");
 
 			glGenVertexArrays(1, &vertexArray);
 			glBindVertexArray(vertexArray);
@@ -280,8 +276,6 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			blerg = glGetError();
 
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-
-			glUniformMatrix4fv(cameraLoc, 1, GL_FALSE, (camera.data));
 
 			CoInitializeEx(NULL, COINIT_MULTITHREADED);
 

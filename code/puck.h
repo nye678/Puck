@@ -62,8 +62,6 @@ struct game_renderer
 	uint32_t bufferHeight;
 };
 
-void DrawRectangle(game_renderer* renderer, const jr::rect &r);
-
 struct game_soundplayer
 {
 	bool test;

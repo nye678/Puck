@@ -1,10 +1,11 @@
 #include "puck.h"
 #include "math.h"
+#include "jr_color.h"
 
 using namespace jr;
 using namespace puck;
 
-void puck::DrawRectangle(game_renderer* renderer, const rect &r)
+void DrawRectangle(game_renderer* renderer, const rect &r)
 {
 	if (!renderer->buffer)
 		return;
@@ -18,7 +19,7 @@ void puck::DrawRectangle(game_renderer* renderer, const rect &r)
 	for (size_t y = top; y <= bottom; ++y)
 		for (size_t x = left; x <= right; ++x)
 		{
-			buffer[x + y * 1024] = 0xFFFFFFFF;
+			buffer[x + y * 1024] = color::Green;
 		}
 }
 
