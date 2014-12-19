@@ -1,8 +1,10 @@
 #ifndef __PUCK_H_
 #define __PUCK_H_
 
-#include "puck_math.h"
-#include "puck_mem.h"
+#include "jr_vec.h"
+#include "jr_matrix.h"
+#include "jr_shapes.h"
+#include "jr_memmanager.h"
 #include "stdint.h"
 
 namespace puck
@@ -11,12 +13,12 @@ namespace puck
 static int windowWidth = 1024;
 static int windowHeight = 768;
 
-static vec3 squareVerts[4] =
+static jr::vec3 squareVerts[4] =
 {
-	vec3(0.0f, 0.0f, 0.0f),
-	vec3(1.0f, 0.0f, 0.0f),
-	vec3(1.0f, -1.0f, 0.0f),
-	vec3(0.0f, -1.0f, 0.0f)
+	jr::vec3(0.0f, 0.0f, 0.0f),
+	jr::vec3(1.0f, 0.0f, 0.0f),
+	jr::vec3(1.0f, -1.0f, 0.0f),
+	jr::vec3(0.0f, -1.0f, 0.0f)
 };
 
 static short squareIndicies[6] =
@@ -55,13 +57,12 @@ struct game_input
 
 struct game_renderer
 {
-	unsigned short indices[10000];
-	int numIndicies;
-	mat4 transforms[1000];
-	int numTransforms;
+	uint8_t* buffer;
+	uint32_t bufferWidth;
+	uint32_t bufferHeight;
 };
 
-void DrawRectangle(game_renderer* renderer, const rect &r);
+void DrawRectangle(game_renderer* renderer, const jr::rect &r);
 
 struct game_soundplayer
 {
@@ -72,7 +73,7 @@ void PlaySound(int soundID);
 
 struct game_state
 {
-	vec3 puckPos, puckVelocity;
+	jr::vec3 puckPos, puckVelocity;
 	float puckSpeed, puckMaxSpeed;
 	float p1x, p1y, p1speed;
 	float p2x, p2y, p2speed;
@@ -88,15 +89,15 @@ void InitializeGameState(game_state* state)
 	state->p2y = windowHeight/2.0f - 50.0f;
 	state->p2speed = 10.0f;
 
-	state->puckPos = vec3(windowWidth / 2.0f, windowHeight / 2.0f, 0.0f);
-	state->puckVelocity = vec3(2.0f, 2.0f, 0.0f);
+	state->puckPos = jr::vec3(windowWidth / 2.0f, windowHeight / 2.0f, 0.0f);
+	state->puckVelocity = jr::vec3(2.0f, 2.0f, 0.0f);
 	state->puckSpeed = 2.0f;
 	state->puckMaxSpeed = 10.0f;
 }
 
 struct game_data
 {
-	MemManager* mem;
+	jr::MemManager* mem;
 	game_renderer* renderer;
 	game_soundplayer* soundplayer;
 	game_input* input;

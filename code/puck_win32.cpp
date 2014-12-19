@@ -2,8 +2,7 @@
 #define _CRT_SECURE_NO_DEPRECATE
 
 #include "puck.h"
-#include "puck_math.h"
-#include "puck_mem.h"
+#include "jr_memmanager.h"
 #include <windows.h>
 #include "GL\gl3w.h"
 #include <stdint.h>
@@ -30,10 +29,11 @@ HGLRC hglrc;
 GLuint program;
 GLuint vertexArray;
 GLuint vertexBuffer;
-GLuint transformBuffer;
-GLuint elementBuffer;
-GLint vertexLoc;
-GLint transformLoc;
+GLuint pbo[2];
+int pboIndex = 0;
+
+GLuint texture;
+GLint texLoc;
 GLint cameraLoc;
 
 IXAudio2* xaudio2;
@@ -50,12 +50,8 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 GLuint CreateBasicShader(const char* vertexCode, const char* fragmentCode);
 GLuint CompileShader(GLenum type, const char* code);
 size_t LoadTextFile(const char* fileName, char* &buffer);
-void DrawRectangle(vec3 position, float xScale, float yScale);
 
-void RenderStuff();
-bool RectIntersection(rect r1, rect r2);
-
-mat4 camera = OrthoProjection(0.0f, windowWidth, 0.0f, -windowHeight, -0.1f, 10000.0f);
+mat4 camera = OrthoProjection(0.0f, 1.0f, 0.0f, -1.0f, -0.1f, 10000.0f);
 
 int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showCmd)
 {
@@ -141,8 +137,29 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 			}
 		}
 
-		RenderStuff();
+		int nextIndex = pboIndex;
+		pboIndex = (pboIndex + 1) % 2;
+
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[pboIndex]);
+		glBindTexture(GL_TEXTURE_2D, texture);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 768, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
+		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1024, 768, 0, GL_RGBA8, GL_UNSIGNED_BYTE, nullptr);
+
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		SwapBuffers(hdc);
+
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[nextIndex]);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * 1024 * 768 * 4, 0, GL_STREAM_DRAW);
+		
+		game.renderer->buffer = (uint8_t*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+		
+		if (game.renderer->buffer != nullptr)
+			memset(game.renderer->buffer, 0x00, 1024 * 768 * 4);
+
 		GameUpdate(&game);
+
+		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
 		if (game.soundplayer->test)
 		{
@@ -159,28 +176,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 			if (FAILED(hr))
 				OutputDebugStringA("Failed to play sound.");
 		}
-
 	}
 	return 0;
-}
-
-void RenderStuff()
-{
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-	glBindBuffer(GL_ARRAY_BUFFER, transformBuffer);
-	glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(float) * 16 * game.renderer->numTransforms, game.renderer->transforms);
-	glBindBuffer(GL_ARRAY_BUFFER, 0);
-	
-	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementBuffer);
-	glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, sizeof(short) * game.renderer->numIndicies, game.renderer->indices);
-
-	glDrawElementsInstanced(GL_TRIANGLES, 6, GL_UNSIGNED_SHORT, 0, game.renderer->numTransforms);
-
-	game.renderer->numIndicies = 0;
-	game.renderer->numTransforms = 0;
-
-	SwapBuffers(hdc);
 }
 
 LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
@@ -253,35 +250,36 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			glUseProgram(program);
 
-			vertexLoc = glGetAttribLocation(program, "vertex");
-			transformLoc = glGetAttribLocation(program, "transform");
+			texLoc = glGetUniformLocation(program, "tex");
 			cameraLoc = glGetUniformLocation(program, "camera");
 
 			glGenVertexArrays(1, &vertexArray);
 			glBindVertexArray(vertexArray);
 		
-			glGenBuffers(1, &vertexBuffer);
-			glBindBuffer(GL_ARRAY_BUFFER, vertexBuffer);
-			glBufferData(GL_ARRAY_BUFFER, 10000 * sizeof(vec3), nullptr, GL_STATIC_DRAW);
-			glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vec3) * 4, squareVerts);
-			glVertexAttribPointer(vertexLoc, 3, GL_FLOAT, GL_FALSE, 0, 0);
-			glEnableVertexAttribArray(vertexLoc);
+			uint8_t* blarg = new uint8_t[1024 * 768 * 4];
+			memset(blarg, 0x4F, 1024 * 768 * 4);
 
-			glGenBuffers(1, &transformBuffer);
-			glBindBuffer(GL_ARRAY_BUFFER, transformBuffer);
-			glBufferData(GL_ARRAY_BUFFER, 1000 * sizeof(mat4), nullptr, GL_DYNAMIC_DRAW);
-			for (int i = 0; i < 4; i++)
-			{
-				glEnableVertexAttribArray(transformLoc + i);
-				glVertexAttribPointer(transformLoc + i, 4, GL_FLOAT, GL_FALSE, sizeof(GLfloat) * 16, (const GLvoid*)(sizeof(GLfloat) * i * 4));
-				glVertexAttribDivisor(transformLoc + i, 1);
-			}
+			glGenBuffers(2, pbo);
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[1]);
+			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * 1024 * 768 * 4, blarg, GL_STREAM_DRAW);
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[0]);
+			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * 1024 * 768 * 4, blarg, GL_STREAM_DRAW);
+			int blerg = glGetError();
+			delete [] blarg;
 
-			glBindBuffer(GL_ARRAY_BUFFER, 0);
+			glUniform1i(texLoc, 0);
+			glActiveTexture(GL_TEXTURE0);
+			glGenTextures(1, &texture);
+			glBindTexture(GL_TEXTURE_2D, texture);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			blerg = glGetError();
 
-			glGenBuffers(1, &elementBuffer);
-			glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, elementBuffer);
-			glBufferData(GL_ELEMENT_ARRAY_BUFFER, 10000 * sizeof(short), nullptr, GL_DYNAMIC_DRAW);
+			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 1024, 768);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 768, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
+			blerg = glGetError();
+
+			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
 			glUniformMatrix4fv(cameraLoc, 1, GL_FALSE, (camera.data));
 

@@ -1,26 +1,25 @@
 #include "puck.h"
 #include "math.h"
 
+using namespace jr;
 using namespace puck;
 
 void puck::DrawRectangle(game_renderer* renderer, const rect &r)
 {
-	for (int i = 0; i < 6; ++i)
-	{
-		renderer->indices[renderer->numIndicies + i] = squareIndicies[i];
-	}
-	renderer->numIndicies += 6;
+	if (!renderer->buffer)
+		return;
 
-	mat4 transform = mat4(1.0f);
-	transform.column[0].x = r.top;
-	transform.column[1].y = r.bottom;
+	int left = r.left > 0.0f ? r.left : 0.0f;
+	int right = r.right < 1024.0f ? r.right : 1023.0f;
+	int top = r.top > 0.0f ? r.top : 0.0f;
+	int bottom = r.bottom < 768.0f ? r.bottom : 767.0f;
 
-	transform.column[3].x = r.left;
-	transform.column[3].y = -r.right;
-	transform.column[3].z = 0.0f;
-
-	renderer->transforms[renderer->numTransforms] = transform;
-	renderer->numTransforms++;
+	uint32_t* buffer = (uint32_t*)renderer->buffer;
+	for (size_t y = top; y <= bottom; ++y)
+		for (size_t x = left; x <= right; ++x)
+		{
+			buffer[x + y * 1024] = 0xFFFFFFFF;
+		}
 }
 
 void puck::GameUpdate(game_data* game)
@@ -29,9 +28,9 @@ void puck::GameUpdate(game_data* game)
 	auto soundplayer = game->soundplayer;
 	auto state = game->state;
 
-	DrawRectangle(game->renderer, rect(state->puckPos.x, state->puckPos.y, 20.0f, 20.0f));
-	DrawRectangle(game->renderer, rect(state->p1x, state->p1y, 20.0f, 100.0f));
-	DrawRectangle(game->renderer, rect(state->p2x, state->p2y, 20.0f, 100.0f));
+	DrawRectangle(game->renderer, rect(state->puckPos.x, state->puckPos.x + 20.0f, state->puckPos.y, state->puckPos.y + 20.0f));
+	DrawRectangle(game->renderer, rect(state->p1x, state->p1x + 20.0f, state->p1y, state->p1y + 100.0f));
+	DrawRectangle(game->renderer, rect(state->p2x, state->p2x + 20.0f, state->p2y, state->p2y + 100.0f));
 
 	if (input->controllers[0].up)
 	{
@@ -48,9 +47,10 @@ void puck::GameUpdate(game_data* game)
 
 	}
 
-	float magnitude = sqrt((float)(input->controllers[0].lStickX * input->controllers[0].lStickX) + (float)(input->controllers[0].lStickY * input->controllers[0].lStickY));
-	float normalizedLX = input->controllers[0].lStickX / magnitude;
-	float normalizedLY = input->controllers[0].lStickY / magnitude;
+	controllerState &controller = input->controllers[0];
+	vec2 leftStick = vec2((float)controller.lStickX, (float)controller.lStickY);
+	vec2 leftNormalized = normalize(leftStick);
+	float magnitude = length(leftStick);
 	float normalizedMagnitude = 0;
 	int leftDeadZone = 7849;
 	if (magnitude > leftDeadZone)
@@ -60,7 +60,7 @@ void puck::GameUpdate(game_data* game)
 		magnitude -= leftDeadZone;
 		normalizedMagnitude = magnitude / (32767 - leftDeadZone);
 
-		state->p1y -= normalizedLY * state->p1speed;
+		state->p1y -= leftNormalized.y * state->p1speed;
 		if (state->p1y < 5.0f)
 			state->p1y = 5.0f;
 		if (state->p1y > windowHeight - 105.0f)

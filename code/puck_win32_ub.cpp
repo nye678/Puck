@@ -1,5 +1,6 @@
+#include "..\..\jrmem\jrmem_ub.cpp"
+
 // Game Stuff
-#include "puck_mem.cpp"
 #include "puck.cpp"
 
 // Platform Stuff
