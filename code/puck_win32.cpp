@@ -44,6 +44,7 @@ bool running = false;
 
 game_data game;
 void* memBlock = nullptr;
+jr::BitMap* fontBitMap;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 GLuint CreateBasicShader(const char* vertexCode, const char* fragmentCode);
@@ -73,18 +74,24 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		instance,							// Instance
 		0);									// lpParam
 
-	memBlock = VirtualAlloc((void*)0x0000000200000000, MEGABYTE(5), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	memBlock = VirtualAlloc((void*)0x0000000200000000, MEGABYTE(50), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	assert(memBlock);
 	void* memHead = (void*)((uintptr_t)memBlock + sizeof(MemManager));
-	size_t memBlockSize = MEGABYTE(5) - sizeof(MemManager);
+	size_t memBlockSize = MEGABYTE(50) - sizeof(MemManager);
 
-	game.mem = new ((MemManager*)memBlock) MemManager(memHead, memBlockSize, MEGABYTE(1));
+	game.mem = new ((MemManager*)memBlock) MemManager(memHead, memBlockSize, MEGABYTE(20));
 	game.input = new (game.mem->Alloc(sizeof(game_input))) game_input;
-	game.renderer = new (game.mem->Alloc(sizeof(game_renderer))) game_renderer;
+	
+	game.renderer = new (game.mem->Alloc(sizeof(jr::RenderBuffer))) jr::RenderBuffer;
+	game.renderer->width = 1024.0f;
+	game.renderer->height = 768.0f;
+	game.renderer->layers = 1;
 	game.state = new (game.mem->Alloc(sizeof(game_state))) game_state;
 	game.soundplayer = new (game.mem->Alloc(sizeof(game_soundplayer))) game_soundplayer;
 
 	InitializeGameState(game.state);
+	game.state->fontBitMap = ReadBMP(game.mem, "font.bmp");
+	game.state->titleBitMap = ReadBMP(game.mem, "superpuck.bmp");
 	game.soundplayer->test = false;
 
 	running = true;
@@ -137,6 +144,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		int nextIndex = pboIndex;
 		pboIndex = (pboIndex + 1) % 2;
 
+		glClear(GL_COLOR_BUFFER_BIT);
+
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[pboIndex]);
 		glBindTexture(GL_TEXTURE_2D, texture);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 768, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
@@ -148,10 +157,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[nextIndex]);
 		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * 1024 * 768 * 4, 0, GL_STREAM_DRAW);
 		
-		game.renderer->buffer = (uint8_t*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-		
-		if (game.renderer->buffer != nullptr)
-			memset(game.renderer->buffer, 0x00, 1024 * 768 * 4);
+		game.renderer->buffer[0] = (uint32_t*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+		if (game.renderer->buffer[0] != nullptr)
+			ClearBuffer(game.renderer);
 
 		GameUpdate(&game);
 
@@ -235,7 +243,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			hglrc = wglCreateContext(hdc);
 			wglMakeCurrent (hdc, hglrc);
 			int result = gl3wInit();
-			glClearColor(0.0f, 0.0f, 0.5f, 1.0f);
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
 			char *vertShader, *fragShader;
 			LoadTextFile("basic.vert", vertShader);
@@ -276,6 +284,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			blerg = glGetError();
 
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
 			CoInitializeEx(NULL, COINIT_MULTITHREADED);
 

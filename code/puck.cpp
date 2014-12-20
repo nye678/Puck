@@ -1,11 +1,12 @@
 #include "puck.h"
 #include "math.h"
 #include "jr_color.h"
+#include "jr_draw.h"
 
 using namespace jr;
 using namespace puck;
 
-void DrawRectangle(game_renderer* renderer, const rect &r)
+/*void DrawRectangle(game_renderer* renderer, const rect &r)
 {
 	if (!renderer->buffer)
 		return;
@@ -21,6 +22,16 @@ void DrawRectangle(game_renderer* renderer, const rect &r)
 		{
 			buffer[x + y * 1024] = color::Green;
 		}
+}*/
+
+jr::rect CharToRect(char c)
+{
+	int tileWidth = 54, tileHeight = 76;
+	int xindex = (c - 32) % 16;
+	int yindex = (int)((float)(c - 32) / 16.0f);
+	return rect(
+		xindex * tileWidth, (xindex + 1) * tileWidth,
+		yindex * tileHeight, (yindex + 1) * tileHeight);
 }
 
 void puck::GameUpdate(game_data* game)
@@ -29,9 +40,33 @@ void puck::GameUpdate(game_data* game)
 	auto soundplayer = game->soundplayer;
 	auto state = game->state;
 
-	DrawRectangle(game->renderer, rect(state->puckPos.x, state->puckPos.x + 20.0f, state->puckPos.y, state->puckPos.y + 20.0f));
-	DrawRectangle(game->renderer, rect(state->p1x, state->p1x + 20.0f, state->p1y, state->p1y + 100.0f));
-	DrawRectangle(game->renderer, rect(state->p2x, state->p2x + 20.0f, state->p2y, state->p2y + 100.0f));
+	rect puck = rect(
+		state->puckPos.x, state->puckPos.x + 20.0f, 
+		state->puckPos.y, state->puckPos.y + 20.0f);
+	rect paddle1 = rect(
+		state->p1x, state->p1x + 20.0f,
+		state->p1y, state->p1y + 100.0f);
+	rect paddle2 = rect(
+		state->p2x, state->p2x + 20.0f,
+		state->p2y, state->p2y + 100.0f);
+
+	rect colon = CharToRect(':');
+	rect p1Score = CharToRect(state->p1Score);
+	rect p2Score = CharToRect(state->p2Score);
+
+	if (game->renderer->buffer[0])
+	{
+		DrawBitMap(game->renderer, 0, game->state->titleBitMap, 0, 0);
+		DrawBitMapTile(game->renderer, 0, game->state->fontBitMap, 500, 0, colon);
+		DrawBitMapTile(game->renderer, 0, game->state->fontBitMap, 500-50, 0, p1Score);
+		DrawBitMapTile(game->renderer, 0, game->state->fontBitMap, 500+50, 0, p2Score);
+		DrawRectangle(game->renderer, 0, puck, 0x00FF0088);
+		DrawRectangle(game->renderer, 0, paddle1, 0x0000FF88);
+		DrawRectangle(game->renderer, 0, paddle2, 0xFF000088);
+		DrawRectangleLine(game->renderer, 0, puck, color::Green);
+		DrawRectangleLine(game->renderer, 0, paddle1, color::Blue);
+		DrawRectangleLine(game->renderer, 0, paddle2, color::Red);
+	}
 
 	if (input->controllers[0].up)
 	{
@@ -119,11 +154,19 @@ void puck::GameUpdate(game_data* game)
 	{
 		state->puckPos.x = windowWidth / 2.0f;
 		state->puckPos.y = windowHeight / 2.0f;
+		state->p2Score++;
 	}
 	else if (state->puckPos.x > windowWidth - 20.0f)
 	{
 		state->puckPos.x = windowWidth / 2.0f;
 		state->puckPos.y = windowHeight / 2.0f;
+		state->p1Score++;
+	}
+
+	if (state->p1Score == ':' || state->p2Score == ':')
+	{
+		state->p1Score = '0';
+		state->p2Score = '0';
 	}
 
 	if (state->puckPos.y < 0.0f)

@@ -5,6 +5,8 @@
 #include "jr_matrix.h"
 #include "jr_shapes.h"
 #include "jr_memmanager.h"
+#include "jr_renderbuffer.h"
+#include "jr_bitmap.h"
 #include "stdint.h"
 
 namespace puck
@@ -71,10 +73,13 @@ void PlaySound(int soundID);
 
 struct game_state
 {
+	jr::BitMap* fontBitMap;
+	jr::BitMap* titleBitMap;
 	jr::vec3 puckPos, puckVelocity;
 	float puckSpeed, puckMaxSpeed;
 	float p1x, p1y, p1speed;
 	float p2x, p2y, p2speed;
+	char p1Score, p2Score;
 };
 
 void InitializeGameState(game_state* state)
@@ -91,12 +96,15 @@ void InitializeGameState(game_state* state)
 	state->puckVelocity = jr::vec3(2.0f, 2.0f, 0.0f);
 	state->puckSpeed = 2.0f;
 	state->puckMaxSpeed = 10.0f;
+
+	state->p1Score = '0';
+	state->p2Score = '0';
 }
 
 struct game_data
 {
 	jr::MemManager* mem;
-	game_renderer* renderer;
+	jr::RenderBuffer* renderer;
 	game_soundplayer* soundplayer;
 	game_input* input;
 	game_state* state;
