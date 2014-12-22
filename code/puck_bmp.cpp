@@ -48,14 +48,20 @@ jr::BitMap* ReadBMP(jr::MemManager* mem, const char* filePath)
 	bitMap->width = imageHeader.imageWidth;
 	bitMap->height = imageHeader.imageHeight;
 
+	jr::ScopeStack stack = mem->PushScope();
+	uint8_t* pixels = (uint8_t*)stack.Alloc(4 * imageHeader.imageWidth);
 	for (int i = imageHeader.imageHeight - 1; i >= 0 ; --i)
 	{
-		ReadFile(
-			bmpHandle,
-			(void*)(&(bitMap->bitMap[i * imageHeader.imageWidth])),
-			sizeof(uint32_t) * imageHeader.imageWidth,
-			&bytesRead,
-			nullptr);
+		ReadFile(bmpHandle, (void*)pixels, 4 * imageHeader.imageWidth, &bytesRead, nullptr);
+
+		for (int x = 0; x < imageHeader.imageWidth; ++x)
+		{
+			bitMap->bitMap[x + i * imageHeader.imageWidth] = 
+				(uint32_t)pixels[4 * x] << 24 |
+				(uint32_t)pixels[4 * x + 1] << 16 |
+				(uint32_t)pixels[4 * x + 2] << 8 |
+				(uint32_t)pixels[4 * x + 3];
+		}
 	}
 
 	CloseHandle(bmpHandle);

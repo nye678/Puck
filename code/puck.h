@@ -9,26 +9,8 @@
 #include "jr_bitmap.h"
 #include "stdint.h"
 
-namespace puck
-{
-
 static int windowWidth = 1024;
 static int windowHeight = 768;
-
-static jr::vec3 squareVerts[4] =
-{
-	jr::vec3(0.0f, 0.0f, 0.0f),
-	jr::vec3(1.0f, 0.0f, 0.0f),
-	jr::vec3(1.0f, -1.0f, 0.0f),
-	jr::vec3(0.0f, -1.0f, 0.0f)
-};
-
-static short squareIndicies[6] =
-{
-	0, 1, 2, 3, 0, 2
-};
-
-static int squareIndexOffset = 0;
 
 struct controllerState
 {
@@ -57,19 +39,11 @@ struct game_input
 	controllerState controllers[4];
 };
 
-struct game_renderer
-{
-	uint8_t* buffer;
-	uint32_t bufferWidth;
-	uint32_t bufferHeight;
-};
-
 struct game_soundplayer
 {
-	bool test;
+	bool paddleSound;
+	bool scoreSound;
 };
-
-void PlaySound(int soundID);
 
 struct game_state
 {
@@ -82,25 +56,6 @@ struct game_state
 	char p1Score, p2Score;
 };
 
-void InitializeGameState(game_state* state)
-{
-	state->p1x = 5.0f;
-	state->p1y = windowHeight/2.0f - 50.0f;
-	state->p1speed = 10.0f;
-
-	state->p2x = windowWidth - 25.0f;
-	state->p2y = windowHeight/2.0f - 50.0f;
-	state->p2speed = 10.0f;
-
-	state->puckPos = jr::vec3(windowWidth / 2.0f, windowHeight / 2.0f, 0.0f);
-	state->puckVelocity = jr::vec3(2.0f, 2.0f, 0.0f);
-	state->puckSpeed = 2.0f;
-	state->puckMaxSpeed = 10.0f;
-
-	state->p1Score = '0';
-	state->p2Score = '0';
-}
-
 struct game_data
 {
 	jr::MemManager* mem;
@@ -110,8 +65,7 @@ struct game_data
 	game_state* state;
 };
 
+void InitializeGameState(game_state* state);
 void GameUpdate(game_data* game);
-
-}
 
 #endif

@@ -4,27 +4,8 @@
 #include "jr_draw.h"
 
 using namespace jr;
-using namespace puck;
 
-/*void DrawRectangle(game_renderer* renderer, const rect &r)
-{
-	if (!renderer->buffer)
-		return;
-
-	int left = r.left > 0.0f ? r.left : 0.0f;
-	int right = r.right < 1024.0f ? r.right : 1023.0f;
-	int top = r.top > 0.0f ? r.top : 0.0f;
-	int bottom = r.bottom < 768.0f ? r.bottom : 767.0f;
-
-	uint32_t* buffer = (uint32_t*)renderer->buffer;
-	for (size_t y = top; y <= bottom; ++y)
-		for (size_t x = left; x <= right; ++x)
-		{
-			buffer[x + y * 1024] = color::Green;
-		}
-}*/
-
-jr::rect CharToRect(char c)
+rect CharToRect(char c)
 {
 	int tileWidth = 54, tileHeight = 76;
 	int xindex = (c - 32) % 16;
@@ -34,7 +15,26 @@ jr::rect CharToRect(char c)
 		yindex * tileHeight, (yindex + 1) * tileHeight);
 }
 
-void puck::GameUpdate(game_data* game)
+void InitializeGameState(game_state* state)
+{
+	state->p1x = 5.0f;
+	state->p1y = windowHeight/2.0f - 50.0f;
+	state->p1speed = 10.0f;
+
+	state->p2x = windowWidth - 25.0f;
+	state->p2y = windowHeight/2.0f - 50.0f;
+	state->p2speed = 10.0f;
+
+	state->puckPos = vec3(windowWidth / 2.0f, windowHeight / 2.0f, 0.0f);
+	state->puckVelocity = vec3(2.0f, 2.0f, 0.0f);
+	state->puckSpeed = 2.0f;
+	state->puckMaxSpeed = 15.0f;
+
+	state->p1Score = '0';
+	state->p2Score = '0';
+}
+
+void GameUpdate(game_data* game)
 {
 	auto input = game->input;
 	auto soundplayer = game->soundplayer;
@@ -135,7 +135,7 @@ void puck::GameUpdate(game_data* game)
 			state->puckSpeed += 0.5f;
 		state->puckVelocity = normalize(state->puckVelocity) * state->puckSpeed;
 		state->puckVelocity.x *= -1.0f;
-		soundplayer->test = true;
+		soundplayer->paddleSound = true;
 	}
 	if (state->puckPos.x + 20.0f > state->p2x
 		&& state->puckPos.y < state->p2y + 100.0f
@@ -147,20 +147,24 @@ void puck::GameUpdate(game_data* game)
 			state->puckSpeed += 0.5f;
 		state->puckVelocity = normalize(state->puckVelocity) * state->puckSpeed;
 		state->puckVelocity.x *= -1.0f;
-		soundplayer->test = true;
+		soundplayer->paddleSound = true;
 	}
 
 	if (state->puckPos.x < 0.0f)
 	{
 		state->puckPos.x = windowWidth / 2.0f;
 		state->puckPos.y = windowHeight / 2.0f;
+		state->puckVelocity *= 0.7f;
 		state->p2Score++;
+		soundplayer->scoreSound = true;
 	}
 	else if (state->puckPos.x > windowWidth - 20.0f)
 	{
 		state->puckPos.x = windowWidth / 2.0f;
 		state->puckPos.y = windowHeight / 2.0f;
+		state->puckVelocity *= 0.7f;
 		state->p1Score++;
+		soundplayer->scoreSound = true;
 	}
 
 	if (state->p1Score == ':' || state->p2Score == ':')

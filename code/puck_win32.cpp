@@ -20,8 +20,6 @@
 #pragma comment (lib, "gdi32.lib")
 #pragma comment (lib, "ole32.lib")
 
-using namespace puck;
-
 HWND hwnd;
 HDC hdc;
 HGLRC hglrc;
@@ -38,13 +36,11 @@ GLint texLoc;
 IXAudio2* xaudio2;
 IXAudio2MasteringVoice* masterVoice;
 IXAudio2SourceVoice* sourceVoice;
-BYTE* soundData;
 
 bool running = false;
 
 game_data game;
 void* memBlock = nullptr;
-jr::BitMap* fontBitMap;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 GLuint CreateBasicShader(const char* vertexCode, const char* fragmentCode);
@@ -88,11 +84,15 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	game.renderer->layers = 1;
 	game.state = new (game.mem->Alloc(sizeof(game_state))) game_state;
 	game.soundplayer = new (game.mem->Alloc(sizeof(game_soundplayer))) game_soundplayer;
+	game.soundplayer->scoreSound = false;
+	game.soundplayer->paddleSound = false;
 
 	InitializeGameState(game.state);
-	game.state->fontBitMap = ReadBMP(game.mem, "font.bmp");
 	game.state->titleBitMap = ReadBMP(game.mem, "superpuck.bmp");
-	game.soundplayer->test = false;
+	game.state->fontBitMap = ReadBMP(game.mem, "font.bmp");
+
+	jr::Sound* scoreSfx = ReadWave(game.mem, "Pickup_Coin.wav");
+	jr::Sound* paddleSfx = ReadWave(game.mem, "blip.wav");
 
 	running = true;
 	while (running)
@@ -149,7 +149,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[pboIndex]);
 		glBindTexture(GL_TEXTURE_2D, texture);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 768, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
-		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, 1024, 768, 0, GL_RGBA8, GL_UNSIGNED_BYTE, nullptr);
 
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 		SwapBuffers(hdc);
@@ -166,16 +165,32 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
-		if (game.soundplayer->test)
+		if (game.soundplayer->scoreSound)
 		{
-			game.soundplayer->test = false;
+			game.soundplayer->scoreSound = false;
 
 			XAUDIO2_BUFFER buffer = {0};
-			buffer.AudioBytes = 2 * 5 * 44100;
-			buffer.pAudioData = soundData;
+			buffer.AudioBytes = scoreSfx->audioBytes;
+			buffer.pAudioData = scoreSfx->buffer;
 			buffer.Flags = XAUDIO2_END_OF_STREAM;
 			buffer.PlayBegin = 0;
-			buffer.PlayLength = 0.25 * 44100;
+			buffer.PlayLength = scoreSfx->audioBytes / 2;
+
+			HRESULT hr = sourceVoice->SubmitSourceBuffer(&buffer);
+			if (FAILED(hr))
+				OutputDebugStringA("Failed to play sound.");
+		}
+
+		if (game.soundplayer->paddleSound)
+		{
+			game.soundplayer->paddleSound = false;
+
+			XAUDIO2_BUFFER buffer = {0};
+			buffer.AudioBytes = paddleSfx->audioBytes;
+			buffer.pAudioData = paddleSfx->buffer;
+			buffer.Flags = XAUDIO2_END_OF_STREAM;
+			buffer.PlayBegin = 0;
+			buffer.PlayLength = paddleSfx->audioBytes / 2;
 
 			HRESULT hr = sourceVoice->SubmitSourceBuffer(&buffer);
 			if (FAILED(hr))
@@ -279,7 +294,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 			blerg = glGetError();
 
-			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, 1024, 768);
+			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, 1024, 768);
 			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 768, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
 			blerg = glGetError();
 
@@ -304,21 +319,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			waveformat.cbSize = 0;
 
 			hr = xaudio2->CreateSourceVoice(&sourceVoice, &waveformat);
-
-			soundData = new BYTE[5 * 2 * 44100];
 			sourceVoice->Start();
-			for (int index = 0, second = 0; second < 5; second++)
-			{
-				for (int cycle = 0; cycle < 441; cycle++)
-				{
-					for (int sample = 0; sample < 100; sample++)
-					{
-						short value = sample < 50 ? 32767 : -32768;
-						soundData[index++] = value & 0xFF;
-						soundData[index++] = (value >> 8) & 0xFF;
-					}
-				}
-			}
 		}
 		break;
 	default:
