@@ -54,7 +54,7 @@ void GameUpdate(game_data* game)
 	rect p1Score = CharToRect(state->p1Score);
 	rect p2Score = CharToRect(state->p2Score);
 
-	if (game->renderer->buffer[0])
+	//if (game->renderer->buffer[0])
 	{
 		DrawBitMap(game->renderer, 0, game->state->titleBitMap, 0, 0);
 		DrawBitMapTile(game->renderer, 0, game->state->fontBitMap, 500, 0, colon);

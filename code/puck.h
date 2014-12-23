@@ -5,7 +5,7 @@
 #include "jr_matrix.h"
 #include "jr_shapes.h"
 #include "jr_memmanager.h"
-#include "jr_renderbuffer.h"
+#include "jr_renderer.h"
 #include "jr_bitmap.h"
 #include "stdint.h"
 
@@ -59,7 +59,7 @@ struct game_state
 struct game_data
 {
 	jr::MemManager* mem;
-	jr::RenderBuffer* renderer;
+	jr::Renderer* renderer;
 	game_soundplayer* soundplayer;
 	game_input* input;
 	game_state* state;

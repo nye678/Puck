@@ -29,6 +29,8 @@ GLuint vertexArray;
 GLuint vertexBuffer;
 GLuint pbo[2];
 int pboIndex = 0;
+jr::Renderer* renderer[2];
+jr::RenderBuffer* renderBuffer;
 
 GLuint texture;
 GLint texLoc;
@@ -40,6 +42,7 @@ IXAudio2SourceVoice* sourceVoice;
 bool running = false;
 
 game_data game;
+
 void* memBlock = nullptr;
 
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
@@ -74,14 +77,19 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	assert(memBlock);
 	void* memHead = (void*)((uintptr_t)memBlock + sizeof(MemManager));
 	size_t memBlockSize = MEGABYTE(50) - sizeof(MemManager);
-
+	
 	game.mem = new ((MemManager*)memBlock) MemManager(memHead, memBlockSize, MEGABYTE(20));
+	
+	renderBuffer = new (game.mem->Alloc(sizeof(jr::RenderBuffer))) jr::RenderBuffer;
+	renderBuffer->width = 1024.0f;
+	renderBuffer->height = 768.0f;
+	renderBuffer->layers = 1;
+
+	renderer[0] = CreateRenderer(game.mem, 64, 64 * sizeof(jr::DrawBitMapParams));
+	renderer[1] = CreateRenderer(game.mem, 64, 64 * sizeof(jr::DrawBitMapParams));
+
 	game.input = new (game.mem->Alloc(sizeof(game_input))) game_input;
 	
-	game.renderer = new (game.mem->Alloc(sizeof(jr::RenderBuffer))) jr::RenderBuffer;
-	game.renderer->width = 1024.0f;
-	game.renderer->height = 768.0f;
-	game.renderer->layers = 1;
 	game.state = new (game.mem->Alloc(sizeof(game_state))) game_state;
 	game.soundplayer = new (game.mem->Alloc(sizeof(game_soundplayer))) game_soundplayer;
 	game.soundplayer->scoreSound = false;
@@ -146,6 +154,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 
 		glClear(GL_COLOR_BUFFER_BIT);
 
+		// Uploads the previous pbo to the texture.
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[pboIndex]);
 		glBindTexture(GL_TEXTURE_2D, texture);
 		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 768, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
@@ -153,17 +162,24 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 		SwapBuffers(hdc);
 
+		// Map the next pbo to the render buffer.
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[nextIndex]);
 		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * 1024 * 768 * 4, 0, GL_STREAM_DRAW);
 		
-		game.renderer->buffer[0] = (uint32_t*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-		if (game.renderer->buffer[0] != nullptr)
-			ClearBuffer(game.renderer);
-
-		GameUpdate(&game);
+		// Use the previous renderer queue to render the next frame.
+		renderBuffer->buffer[0] = (uint32_t*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+		if (renderBuffer->buffer[0] != nullptr)
+		{
+			RenderFrame(renderer[pboIndex], renderBuffer);
+		}
 
 		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+
+		// Queue the next render commands for the next frame.
+		ResetRenderer(renderer[nextIndex]);
+		game.renderer = renderer[nextIndex];
+		GameUpdate(&game);
 
 		if (game.soundplayer->scoreSound)
 		{
