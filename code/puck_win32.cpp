@@ -38,8 +38,11 @@ GLint texLoc;
 IXAudio2* xaudio2;
 IXAudio2MasteringVoice* masterVoice;
 IXAudio2SourceVoice* sourceVoice;
+game_soundplayer* soundplayer[2];
 
 bool running = false;
+CONDITION_VARIABLE TriggerGameUpdate;
+CRITICAL_SECTION GameUpdateLock;
 
 game_data game;
 
@@ -49,6 +52,60 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 GLuint CreateBasicShader(const char* vertexCode, const char* fragmentCode);
 GLuint CompileShader(GLenum type, const char* code);
 size_t LoadTextFile(const char* fileName, char* &buffer);
+
+DWORD WINAPI GameUpdateProc(void* param)
+{
+	game_data* gameData = (game_data*)param;
+
+	EnterCriticalSection(&GameUpdateLock);
+	
+	while (true)
+	{
+		for(int i = 0; i < 4; ++i)
+		{
+			XINPUT_STATE controllerState;
+			ZeroMemory(&controllerState, sizeof(XINPUT_STATE));
+
+			DWORD result = XInputGetState(i, &controllerState);
+			if(result == ERROR_SUCCESS)
+			{
+				XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
+
+				gameData->input->controllers[i].up = (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
+				gameData->input->controllers[i].down = (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
+				gameData->input->controllers[i].left = (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
+				gameData->input->controllers[i].right = (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
+				gameData->input->controllers[i].start = (pad->wButtons & XINPUT_GAMEPAD_START);
+				gameData->input->controllers[i].back = (pad->wButtons & XINPUT_GAMEPAD_BACK);
+				gameData->input->controllers[i].lThumb = (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
+				gameData->input->controllers[i].rThumb = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB);
+				gameData->input->controllers[i].lShoulder = (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
+				gameData->input->controllers[i].rShoulder = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+				gameData->input->controllers[i].aButton = (pad->wButtons & XINPUT_GAMEPAD_A);
+				gameData->input->controllers[i].bButton = (pad->wButtons & XINPUT_GAMEPAD_B);
+				gameData->input->controllers[i].xButton = (pad->wButtons & XINPUT_GAMEPAD_X);
+				gameData->input->controllers[i].yButton = (pad->wButtons & XINPUT_GAMEPAD_Y);
+
+				gameData->input->controllers[i].lStickX = pad->sThumbLX;
+				gameData->input->controllers[i].lStickY = pad->sThumbLY;
+				gameData->input->controllers[i].rStickX = pad->sThumbRX;
+				gameData->input->controllers[i].rStickY = pad->sThumbRY;
+			}
+		}
+
+		GameUpdate(gameData);
+		SleepConditionVariableCS(&TriggerGameUpdate, &GameUpdateLock, INFINITE);
+
+		if (!running)
+		{
+			break;
+		}
+	}
+	
+	LeaveCriticalSection(&GameUpdateLock);
+
+	return 0;
+}
 
 int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showCmd)
 {
@@ -91,9 +148,14 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	game.input = new (game.mem->Alloc(sizeof(game_input))) game_input;
 	
 	game.state = new (game.mem->Alloc(sizeof(game_state))) game_state;
-	game.soundplayer = new (game.mem->Alloc(sizeof(game_soundplayer))) game_soundplayer;
-	game.soundplayer->scoreSound = false;
-	game.soundplayer->paddleSound = false;
+	
+	soundplayer[0] = (game_soundplayer*)game.mem->Alloc(sizeof(game_soundplayer));
+	soundplayer[0]->scoreSound = false;
+	soundplayer[0]->paddleSound = false;
+	soundplayer[1] = (game_soundplayer*)game.mem->Alloc(sizeof(game_soundplayer));
+	soundplayer[1]->scoreSound = false;
+	soundplayer[1]->paddleSound = false;
+	game.soundplayer = soundplayer[0];
 
 	InitializeGameState(game.state);
 	game.state->titleBitMap = ReadBMP(game.mem, "superpuck.bmp");
@@ -103,6 +165,13 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	jr::Sound* paddleSfx = ReadWave(game.mem, "blip.wav");
 
 	running = true;
+
+	InitializeConditionVariable(&TriggerGameUpdate);
+	InitializeCriticalSection(&GameUpdateLock);
+
+	DWORD id;
+	HANDLE gameUpdateThread = CreateThread(nullptr, 0, GameUpdateProc, (void*)(&game), 0, &id);
+
 	while (running)
 	{
 		MSG msg = {};
@@ -110,47 +179,59 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		{
 			if (msg.message == WM_QUIT)
 			{
+				EnterCriticalSection(&GameUpdateLock);
 				running = false;
+				LeaveCriticalSection(&GameUpdateLock);
 			}
 
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
 		}
 
-		for(int i = 0; i < 4; ++i)
-		{
-			XINPUT_STATE controllerState;
-			ZeroMemory(&controllerState, sizeof(XINPUT_STATE));
-
-			DWORD result = XInputGetState(i, &controllerState);
-			if(result == ERROR_SUCCESS)
-			{
-				XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
-
-				game.input->controllers[i].up = (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
-				game.input->controllers[i].down = (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
-				game.input->controllers[i].left = (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
-				game.input->controllers[i].right = (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
-				game.input->controllers[i].start = (pad->wButtons & XINPUT_GAMEPAD_START);
-				game.input->controllers[i].back = (pad->wButtons & XINPUT_GAMEPAD_BACK);
-				game.input->controllers[i].lThumb = (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
-				game.input->controllers[i].rThumb = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB);
-				game.input->controllers[i].lShoulder = (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
-				game.input->controllers[i].rShoulder = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
-				game.input->controllers[i].aButton = (pad->wButtons & XINPUT_GAMEPAD_A);
-				game.input->controllers[i].bButton = (pad->wButtons & XINPUT_GAMEPAD_B);
-				game.input->controllers[i].xButton = (pad->wButtons & XINPUT_GAMEPAD_X);
-				game.input->controllers[i].yButton = (pad->wButtons & XINPUT_GAMEPAD_Y);
-
-				game.input->controllers[i].lStickX = pad->sThumbLX;
-				game.input->controllers[i].lStickY = pad->sThumbLY;
-				game.input->controllers[i].rStickX = pad->sThumbRX;
-				game.input->controllers[i].rStickY = pad->sThumbRY;
-			}
-		}
-
 		int nextIndex = pboIndex;
 		pboIndex = (pboIndex + 1) % 2;
+
+		ResetRenderer(renderer[nextIndex]);
+
+		// Trigger the game update thread.
+		EnterCriticalSection(&GameUpdateLock);
+		game.renderer = renderer[nextIndex];
+		game.soundplayer = soundplayer[nextIndex];
+		LeaveCriticalSection(&GameUpdateLock);
+		WakeConditionVariable(&TriggerGameUpdate);
+
+		// Begin rendering.
+		if (soundplayer[pboIndex]->scoreSound)
+		{
+			soundplayer[pboIndex]->scoreSound = false;
+
+			XAUDIO2_BUFFER buffer = {0};
+			buffer.AudioBytes = scoreSfx->audioBytes;
+			buffer.pAudioData = scoreSfx->buffer;
+			buffer.Flags = XAUDIO2_END_OF_STREAM;
+			buffer.PlayBegin = 0;
+			buffer.PlayLength = scoreSfx->audioBytes / 2;
+
+			HRESULT hr = sourceVoice->SubmitSourceBuffer(&buffer);
+			if (FAILED(hr))
+				OutputDebugStringA("Failed to play sound.");
+		}
+
+		if (soundplayer[pboIndex]->paddleSound)
+		{
+			soundplayer[pboIndex]->paddleSound = false;
+
+			XAUDIO2_BUFFER buffer = {0};
+			buffer.AudioBytes = paddleSfx->audioBytes;
+			buffer.pAudioData = paddleSfx->buffer;
+			buffer.Flags = XAUDIO2_END_OF_STREAM;
+			buffer.PlayBegin = 0;
+			buffer.PlayLength = paddleSfx->audioBytes / 2;
+
+			HRESULT hr = sourceVoice->SubmitSourceBuffer(&buffer);
+			if (FAILED(hr))
+				OutputDebugStringA("Failed to play sound.");
+		}
 
 		glClear(GL_COLOR_BUFFER_BIT);
 
@@ -176,43 +257,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
-		// Queue the next render commands for the next frame.
-		ResetRenderer(renderer[nextIndex]);
-		game.renderer = renderer[nextIndex];
-		GameUpdate(&game);
-
-		if (game.soundplayer->scoreSound)
-		{
-			game.soundplayer->scoreSound = false;
-
-			XAUDIO2_BUFFER buffer = {0};
-			buffer.AudioBytes = scoreSfx->audioBytes;
-			buffer.pAudioData = scoreSfx->buffer;
-			buffer.Flags = XAUDIO2_END_OF_STREAM;
-			buffer.PlayBegin = 0;
-			buffer.PlayLength = scoreSfx->audioBytes / 2;
-
-			HRESULT hr = sourceVoice->SubmitSourceBuffer(&buffer);
-			if (FAILED(hr))
-				OutputDebugStringA("Failed to play sound.");
-		}
-
-		if (game.soundplayer->paddleSound)
-		{
-			game.soundplayer->paddleSound = false;
-
-			XAUDIO2_BUFFER buffer = {0};
-			buffer.AudioBytes = paddleSfx->audioBytes;
-			buffer.pAudioData = paddleSfx->buffer;
-			buffer.Flags = XAUDIO2_END_OF_STREAM;
-			buffer.PlayBegin = 0;
-			buffer.PlayLength = paddleSfx->audioBytes / 2;
-
-			HRESULT hr = sourceVoice->SubmitSourceBuffer(&buffer);
-			if (FAILED(hr))
-				OutputDebugStringA("Failed to play sound.");
-		}
 	}
+
+	WaitForSingleObject(gameUpdateThread, INFINITE);
+
 	return 0;
 }
 
