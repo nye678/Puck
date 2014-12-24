@@ -1,6 +1,7 @@
 #define _WIN32_DCOM
 #define _CRT_SECURE_NO_DEPRECATE
 
+#include "puck_gamecommon.h"
 #include "puck.h"
 #include "jr_memmanager.h"
 #include <windows.h>
@@ -19,6 +20,9 @@
 #pragma comment (lib, "user32.lib")
 #pragma comment (lib, "gdi32.lib")
 #pragma comment (lib, "ole32.lib")
+
+static int windowWidth = 1024;
+static int windowHeight = 768;
 
 HWND hwnd;
 HDC hdc;
@@ -44,7 +48,9 @@ bool running = false;
 CONDITION_VARIABLE TriggerGameUpdate;
 CRITICAL_SECTION GameUpdateLock;
 
-game_data game;
+debug_tools debug;
+
+Systems sys;
 
 void* memBlock = nullptr;
 
@@ -52,71 +58,28 @@ LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 GLuint CreateBasicShader(const char* vertexCode, const char* fragmentCode);
 GLuint CompileShader(GLenum type, const char* code);
 size_t LoadTextFile(const char* fileName, char* &buffer);
+DWORD WINAPI GameUpdateProc(void* param);
 
-DWORD WINAPI GameUpdateProc(void* param)
+jr::BitMap* DebugLoadBitMap(const char* filepath)
 {
-	game_data* gameData = (game_data*)param;
+	return ReadBMP(sys.mem, filepath);
+}
 
-	EnterCriticalSection(&GameUpdateLock);
-	
-	while (true)
-	{
-		for(int i = 0; i < 4; ++i)
-		{
-			XINPUT_STATE controllerState;
-			ZeroMemory(&controllerState, sizeof(XINPUT_STATE));
-
-			DWORD result = XInputGetState(i, &controllerState);
-			if(result == ERROR_SUCCESS)
-			{
-				XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
-
-				gameData->input->controllers[i].up = (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
-				gameData->input->controllers[i].down = (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
-				gameData->input->controllers[i].left = (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
-				gameData->input->controllers[i].right = (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
-				gameData->input->controllers[i].start = (pad->wButtons & XINPUT_GAMEPAD_START);
-				gameData->input->controllers[i].back = (pad->wButtons & XINPUT_GAMEPAD_BACK);
-				gameData->input->controllers[i].lThumb = (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
-				gameData->input->controllers[i].rThumb = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB);
-				gameData->input->controllers[i].lShoulder = (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
-				gameData->input->controllers[i].rShoulder = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
-				gameData->input->controllers[i].aButton = (pad->wButtons & XINPUT_GAMEPAD_A);
-				gameData->input->controllers[i].bButton = (pad->wButtons & XINPUT_GAMEPAD_B);
-				gameData->input->controllers[i].xButton = (pad->wButtons & XINPUT_GAMEPAD_X);
-				gameData->input->controllers[i].yButton = (pad->wButtons & XINPUT_GAMEPAD_Y);
-
-				gameData->input->controllers[i].lStickX = pad->sThumbLX;
-				gameData->input->controllers[i].lStickY = pad->sThumbLY;
-				gameData->input->controllers[i].rStickX = pad->sThumbRX;
-				gameData->input->controllers[i].rStickY = pad->sThumbRY;
-			}
-		}
-
-		GameUpdate(gameData);
-		SleepConditionVariableCS(&TriggerGameUpdate, &GameUpdateLock, INFINITE);
-
-		if (!running)
-		{
-			break;
-		}
-	}
-	
-	LeaveCriticalSection(&GameUpdateLock);
-
-	return 0;
+jr::Sound* DebugLoadSound(const char* filepath)
+{
+	return ReadWave(sys.mem, filepath);
 }
 
 int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showCmd)
 {
-	WNDCLASS wc = {}; 
-	
+	WNDCLASSEX wc = {}; 
+	wc.cbSize = sizeof(WNDCLASSEX);
 	wc.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
 	wc.lpfnWndProc   = WndProc;
 	wc.hInstance     = instance;
 	wc.lpszClassName = "PuckWindowClass";
 	
-	if (!RegisterClass(&wc))
+	if (!RegisterClassEx(&wc))
 		return 1;
 
 	hwnd = CreateWindowEx(
@@ -124,45 +87,46 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		wc.lpszClassName, 					// Class Name
 		"Puck",								// Window Name
 		WS_OVERLAPPEDWINDOW | WS_VISIBLE,	// Style
-		0, 0, 1024, 768,					// X, Y, Width, Height
+		0, 0, windowWidth, windowHeight,					// X, Y, Width, Height
 		0,									// HWND Parent
 		0,									// Menu
 		instance,							// Instance
-		0);									// lpParam
+		0);						// lpParam
 
 	memBlock = VirtualAlloc((void*)0x0000000200000000, MEGABYTE(50), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	assert(memBlock);
 	void* memHead = (void*)((uintptr_t)memBlock + sizeof(MemManager));
 	size_t memBlockSize = MEGABYTE(50) - sizeof(MemManager);
 	
-	game.mem = new ((MemManager*)memBlock) MemManager(memHead, memBlockSize, MEGABYTE(20));
+	sys.mem = new ((MemManager*)memBlock) MemManager(memHead, memBlockSize, MEGABYTE(20));
 	
-	renderBuffer = new (game.mem->Alloc(sizeof(jr::RenderBuffer))) jr::RenderBuffer;
-	renderBuffer->width = 1024.0f;
-	renderBuffer->height = 768.0f;
+	renderBuffer = new (sys.mem->Alloc(sizeof(jr::RenderBuffer))) jr::RenderBuffer;
+	renderBuffer->width = windowWidth;
+	renderBuffer->height = windowHeight;
 	renderBuffer->layers = 1;
 
-	renderer[0] = CreateRenderer(game.mem, 64, 64 * sizeof(jr::DrawBitMapParams));
-	renderer[1] = CreateRenderer(game.mem, 64, 64 * sizeof(jr::DrawBitMapParams));
+	renderer[0] = CreateRenderer(sys.mem, 64, 64 * sizeof(jr::DrawBitMapParams));
+	renderer[0]->bufferWidth = windowWidth;
+	renderer[0]->bufferHeight = windowHeight;
+	renderer[1] = CreateRenderer(sys.mem, 64, 64 * sizeof(jr::DrawBitMapParams));
+	renderer[1]->bufferWidth = windowWidth;
+	renderer[1]->bufferHeight = windowHeight;
+	sys.renderer = renderer[0];
 
-	game.input = new (game.mem->Alloc(sizeof(game_input))) game_input;
+	sys.input = new (sys.mem->Alloc(sizeof(game_input))) game_input;
+	//sys.state = new (sys.mem->Alloc(sizeof(game_state))) game_state;
 	
-	game.state = new (game.mem->Alloc(sizeof(game_state))) game_state;
-	
-	soundplayer[0] = (game_soundplayer*)game.mem->Alloc(sizeof(game_soundplayer));
-	soundplayer[0]->scoreSound = false;
-	soundplayer[0]->paddleSound = false;
-	soundplayer[1] = (game_soundplayer*)game.mem->Alloc(sizeof(game_soundplayer));
-	soundplayer[1]->scoreSound = false;
-	soundplayer[1]->paddleSound = false;
-	game.soundplayer = soundplayer[0];
+	soundplayer[0] = (game_soundplayer*)sys.mem->Alloc(sizeof(game_soundplayer));
+	soundplayer[0]->sound = nullptr;
+	soundplayer[1] = (game_soundplayer*)sys.mem->Alloc(sizeof(game_soundplayer));
+	soundplayer[1]->sound = nullptr;
+	sys.soundplayer = soundplayer[0];
 
-	InitializeGameState(game.state);
-	game.state->titleBitMap = ReadBMP(game.mem, "superpuck.bmp");
-	game.state->fontBitMap = ReadBMP(game.mem, "font.bmp");
+	debug.LoadBitMap = DebugLoadBitMap;
+	debug.LoadSound = DebugLoadSound;
+	sys.debug = &debug;
 
-	jr::Sound* scoreSfx = ReadWave(game.mem, "Pickup_Coin.wav");
-	jr::Sound* paddleSfx = ReadWave(game.mem, "blip.wav");
+	InitializeGame(&sys);
 
 	running = true;
 
@@ -170,7 +134,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	InitializeCriticalSection(&GameUpdateLock);
 
 	DWORD id;
-	HANDLE gameUpdateThread = CreateThread(nullptr, 0, GameUpdateProc, (void*)(&game), 0, &id);
+	HANDLE gameUpdateThread = CreateThread(nullptr, 0, GameUpdateProc, (void*)(&sys), 0, &id);
 
 	while (running)
 	{
@@ -195,42 +159,28 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 
 		// Trigger the game update thread.
 		EnterCriticalSection(&GameUpdateLock);
-		game.renderer = renderer[nextIndex];
-		game.soundplayer = soundplayer[nextIndex];
+		sys.renderer = renderer[nextIndex];
+		sys.soundplayer = soundplayer[nextIndex];
 		LeaveCriticalSection(&GameUpdateLock);
 		WakeConditionVariable(&TriggerGameUpdate);
 
 		// Begin rendering.
-		if (soundplayer[pboIndex]->scoreSound)
+		if (soundplayer[pboIndex]->sound)
 		{
-			soundplayer[pboIndex]->scoreSound = false;
+			jr::Sound* sound = soundplayer[pboIndex]->sound;
 
 			XAUDIO2_BUFFER buffer = {0};
-			buffer.AudioBytes = scoreSfx->audioBytes;
-			buffer.pAudioData = scoreSfx->buffer;
+			buffer.AudioBytes = sound->audioBytes;
+			buffer.pAudioData = sound->buffer;
 			buffer.Flags = XAUDIO2_END_OF_STREAM;
 			buffer.PlayBegin = 0;
-			buffer.PlayLength = scoreSfx->audioBytes / 2;
+			buffer.PlayLength = sound->audioBytes / 2;
 
 			HRESULT hr = sourceVoice->SubmitSourceBuffer(&buffer);
 			if (FAILED(hr))
 				OutputDebugStringA("Failed to play sound.");
-		}
-
-		if (soundplayer[pboIndex]->paddleSound)
-		{
-			soundplayer[pboIndex]->paddleSound = false;
-
-			XAUDIO2_BUFFER buffer = {0};
-			buffer.AudioBytes = paddleSfx->audioBytes;
-			buffer.pAudioData = paddleSfx->buffer;
-			buffer.Flags = XAUDIO2_END_OF_STREAM;
-			buffer.PlayBegin = 0;
-			buffer.PlayLength = paddleSfx->audioBytes / 2;
-
-			HRESULT hr = sourceVoice->SubmitSourceBuffer(&buffer);
-			if (FAILED(hr))
-				OutputDebugStringA("Failed to play sound.");
+			
+			soundplayer[pboIndex]->sound = nullptr;
 		}
 
 		glClear(GL_COLOR_BUFFER_BIT);
@@ -260,6 +210,60 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	}
 
 	WaitForSingleObject(gameUpdateThread, INFINITE);
+
+	return 0;
+}
+
+DWORD WINAPI GameUpdateProc(void* param)
+{
+	Systems* sys = (Systems*)param;
+
+	EnterCriticalSection(&GameUpdateLock);
+	
+	while (true)
+	{
+		for(int i = 0; i < 4; ++i)
+		{
+			XINPUT_STATE controllerState;
+			ZeroMemory(&controllerState, sizeof(XINPUT_STATE));
+
+			DWORD result = XInputGetState(i, &controllerState);
+			if(result == ERROR_SUCCESS)
+			{
+				XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
+
+				sys->input->controllers[i].up = (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
+				sys->input->controllers[i].down = (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
+				sys->input->controllers[i].left = (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
+				sys->input->controllers[i].right = (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
+				sys->input->controllers[i].start = (pad->wButtons & XINPUT_GAMEPAD_START);
+				sys->input->controllers[i].back = (pad->wButtons & XINPUT_GAMEPAD_BACK);
+				sys->input->controllers[i].lThumb = (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
+				sys->input->controllers[i].rThumb = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB);
+				sys->input->controllers[i].lShoulder = (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
+				sys->input->controllers[i].rShoulder = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
+				sys->input->controllers[i].aButton = (pad->wButtons & XINPUT_GAMEPAD_A);
+				sys->input->controllers[i].bButton = (pad->wButtons & XINPUT_GAMEPAD_B);
+				sys->input->controllers[i].xButton = (pad->wButtons & XINPUT_GAMEPAD_X);
+				sys->input->controllers[i].yButton = (pad->wButtons & XINPUT_GAMEPAD_Y);
+
+				sys->input->controllers[i].lStickX = pad->sThumbLX;
+				sys->input->controllers[i].lStickY = pad->sThumbLY;
+				sys->input->controllers[i].rStickX = pad->sThumbRX;
+				sys->input->controllers[i].rStickY = pad->sThumbRY;
+			}
+		}
+
+		GameUpdate(sys);
+		SleepConditionVariableCS(&TriggerGameUpdate, &GameUpdateLock, INFINITE);
+
+		if (!running)
+		{
+			break;
+		}
+	}
+	
+	LeaveCriticalSection(&GameUpdateLock);
 
 	return 0;
 }
