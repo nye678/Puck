@@ -103,7 +103,17 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		instance,							// Instance
 		0);						// lpParam
 
-	gamelib = LoadLibrary("..\\build\\puck.dll");
+	/*
+		Load the game dll.
+	*/
+	CopyFile("puck.dll", "puck_temp.dll", false);
+	
+	HANDLE gamelibFileHandle = CreateFile("puck.dll", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+	FILETIME gamelibFileTime = {};
+	GetFileTime(gamelibFileHandle, NULL, NULL, &gamelibFileTime);
+	CloseHandle(gamelibFileHandle);
+
+	gamelib = LoadLibrary("puck_temp.dll");
 	InitializeGame = (InitializeGameFunc)GetProcAddress(gamelib, "InitializeGame");
 	GameUpdate = (GameUpdateFunc)GetProcAddress(gamelib, "GameUpdate");
 
@@ -192,6 +202,43 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		int nextIndex = pboIndex;
 		pboIndex = (pboIndex + 1) % 2;
 
+		gamelibFileHandle = CreateFile("puck.dll", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
+		FILETIME gamelibCurrentTime = {};
+		GetFileTime(gamelibFileHandle, NULL, NULL, &gamelibCurrentTime);
+		CloseHandle(gamelibFileHandle);
+
+		if (CompareFileTime(&gamelibCurrentTime, &gamelibFileTime) > 0)
+		{
+			/*
+				Hot reload game dll
+			*/
+			EnterCriticalSection(&GameUpdateLock);
+
+			FreeLibrary(gamelib);
+			if (!CopyFile("puck.dll", "puck_temp.dll", false))
+			{
+				int error = GetLastError();
+				OutputDebugStringA("Failed to copy game lib.");
+			}
+			
+			gamelib = LoadLibrary("puck_temp.dll");
+			InitializeGame = (InitializeGameFunc)GetProcAddress(gamelib, "InitializeGame");
+			GameUpdate = (GameUpdateFunc)GetProcAddress(gamelib, "GameUpdate");
+			
+			LeaveCriticalSection(&GameUpdateLock);	
+		
+			memcpy(&gamelibFileTime, &gamelibCurrentTime, sizeof(FILETIME));
+
+			/*
+				Drop a frame, to work around a bug involving shared code
+				between the game exe and dll. Render command buffer uses
+				function pointers but those pointers may be incorrect after
+				reloading the dll.
+			*/
+			ResetRenderer(renderer[pboIndex]);
+		}
+
+
 		/*
 			Trigger the game update thread.
 		*/
@@ -246,7 +293,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	}
 
 	WaitForSingleObject(gameUpdateThread, INFINITE);
-
 	return 0;
 }
 
@@ -368,8 +414,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 
 			char *vertShader, *fragShader;
-			LoadTextFile("basic.vert", vertShader);
-			LoadTextFile("basic.frag", fragShader);
+			LoadTextFile("..\\data\\basic.vert", vertShader);
+			LoadTextFile("..\\data\\basic.frag", fragShader);
 			program = CreateBasicShader(vertShader, fragShader);
 			
 			delete[] vertShader;

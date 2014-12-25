@@ -72,6 +72,7 @@ struct Systems
 	game_soundplayer* soundplayer;
 	game_input* input;
 	debug_tools* debug;
+	void* state;
 };
 
 #endif
