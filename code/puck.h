@@ -3,7 +3,7 @@
 
 #include "puck_gamecommon.h"
 
-void InitializeGame(Systems* sys);
-void GameUpdate(Systems* sys);
+extern "C" void InitializeGame(Systems* sys);
+extern "C" void GameUpdate(Systems* sys);
 
 #endif

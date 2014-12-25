@@ -2,7 +2,6 @@
 #define _CRT_SECURE_NO_DEPRECATE
 
 #include "puck_gamecommon.h"
-#include "puck.h"
 #include "jr_memmanager.h"
 #include <windows.h>
 #include "GL\gl3w.h"
@@ -54,6 +53,14 @@ Systems sys;
 
 void* memBlock = nullptr;
 
+typedef void (*InitializeGameFunc)(Systems* sys);
+InitializeGameFunc InitializeGame;
+
+typedef void (*GameUpdateFunc)(Systems* sys);
+GameUpdateFunc GameUpdate;
+
+HMODULE gamelib;
+
 LRESULT CALLBACK WndProc(HWND hwnd, UINT message, WPARAM wParam, LPARAM lParam);
 GLuint CreateBasicShader(const char* vertexCode, const char* fragmentCode);
 GLuint CompileShader(GLenum type, const char* code);
@@ -72,6 +79,9 @@ jr::Sound* DebugLoadSound(const char* filepath)
 
 int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showCmd)
 {
+	/*
+		Create the game window.
+	*/
 	WNDCLASSEX wc = {}; 
 	wc.cbSize = sizeof(WNDCLASSEX);
 	wc.style = CS_OWNDC | CS_HREDRAW | CS_VREDRAW;
@@ -93,6 +103,13 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		instance,							// Instance
 		0);						// lpParam
 
+	gamelib = LoadLibrary("..\\build\\puck.dll");
+	InitializeGame = (InitializeGameFunc)GetProcAddress(gamelib, "InitializeGame");
+	GameUpdate = (GameUpdateFunc)GetProcAddress(gamelib, "GameUpdate");
+
+	/*
+		Alloc a big block of memory to use.
+	*/
 	memBlock = VirtualAlloc((void*)0x0000000200000000, MEGABYTE(50), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	assert(memBlock);
 	void* memHead = (void*)((uintptr_t)memBlock + sizeof(MemManager));
@@ -100,6 +117,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	
 	sys.mem = new ((MemManager*)memBlock) MemManager(memHead, memBlockSize, MEGABYTE(20));
 	
+	/*
+		Set up the rendering structs.
+	*/
 	renderBuffer = new (sys.mem->Alloc(sizeof(jr::RenderBuffer))) jr::RenderBuffer;
 	renderBuffer->width = windowWidth;
 	renderBuffer->height = windowHeight;
@@ -113,19 +133,30 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	renderer[1]->bufferHeight = windowHeight;
 	sys.renderer = renderer[0];
 
+	/*
+		Create the input struct.
+	*/
 	sys.input = new (sys.mem->Alloc(sizeof(game_input))) game_input;
-	//sys.state = new (sys.mem->Alloc(sizeof(game_state))) game_state;
 	
+	/*
+		Create the sound structs.
+	*/
 	soundplayer[0] = (game_soundplayer*)sys.mem->Alloc(sizeof(game_soundplayer));
 	soundplayer[0]->sound = nullptr;
 	soundplayer[1] = (game_soundplayer*)sys.mem->Alloc(sizeof(game_soundplayer));
 	soundplayer[1]->sound = nullptr;
 	sys.soundplayer = soundplayer[0];
 
+	/*
+		Create debug tools structs.
+	*/
 	debug.LoadBitMap = DebugLoadBitMap;
 	debug.LoadSound = DebugLoadSound;
 	sys.debug = &debug;
 
+	/*
+		Initialize the game and game update thread.
+	*/
 	InitializeGame(&sys);
 
 	running = true;
@@ -136,6 +167,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	DWORD id;
 	HANDLE gameUpdateThread = CreateThread(nullptr, 0, GameUpdateProc, (void*)(&sys), 0, &id);
 
+	/*
+		Main Game Loop
+	*/
 	while (running)
 	{
 		MSG msg = {};
@@ -152,19 +186,46 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 			DispatchMessage(&msg);
 		}
 
+		/*
+			Update buffer index. 0 -> 1 or 1 -> 0.
+		*/
 		int nextIndex = pboIndex;
 		pboIndex = (pboIndex + 1) % 2;
 
+		/*
+			Trigger the game update thread.
+		*/
 		ResetRenderer(renderer[nextIndex]);
-
-		// Trigger the game update thread.
 		EnterCriticalSection(&GameUpdateLock);
 		sys.renderer = renderer[nextIndex];
 		sys.soundplayer = soundplayer[nextIndex];
 		LeaveCriticalSection(&GameUpdateLock);
 		WakeConditionVariable(&TriggerGameUpdate);
 
-		// Begin rendering.
+		/*
+			Render the current frame using the command queue generated during the previous frame.
+		*/
+		glClear(GL_COLOR_BUFFER_BIT);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[0]);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * windowWidth * windowHeight * 4, 0, GL_STREAM_DRAW);
+		
+		renderBuffer->buffer[0] = (uint32_t*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+		if (renderBuffer->buffer[0] != nullptr)
+		{
+			RenderFrame(renderer[pboIndex], renderBuffer);
+		}
+
+		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
+
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
+		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+		
+		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+		SwapBuffers(hdc);
+
+		/*
+			Check to see if there is a sound to play this frame.
+		*/
 		if (soundplayer[pboIndex]->sound)
 		{
 			jr::Sound* sound = soundplayer[pboIndex]->sound;
@@ -182,31 +243,6 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 			
 			soundplayer[pboIndex]->sound = nullptr;
 		}
-
-		glClear(GL_COLOR_BUFFER_BIT);
-
-		// Uploads the previous pbo to the texture.
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[pboIndex]);
-		glBindTexture(GL_TEXTURE_2D, texture);
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 768, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
-
-		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
-		SwapBuffers(hdc);
-
-		// Map the next pbo to the render buffer.
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[nextIndex]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * 1024 * 768 * 4, 0, GL_STREAM_DRAW);
-		
-		// Use the previous renderer queue to render the next frame.
-		renderBuffer->buffer[0] = (uint32_t*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
-		if (renderBuffer->buffer[0] != nullptr)
-		{
-			RenderFrame(renderer[pboIndex], renderBuffer);
-		}
-
-		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
-
 	}
 
 	WaitForSingleObject(gameUpdateThread, INFINITE);
@@ -297,6 +333,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 	case WM_CREATE:
 		{
 			OutputDebugStringA("WM_CREATE\n");
+			/*
+				Setup for OpenGL.
+			*/
 			PIXELFORMATDESCRIPTOR pfd =
 			{
 				sizeof(PIXELFORMATDESCRIPTOR),
@@ -343,14 +382,14 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			glGenVertexArrays(1, &vertexArray);
 			glBindVertexArray(vertexArray);
 		
-			uint8_t* blarg = new uint8_t[1024 * 768 * 4];
-			memset(blarg, 0x4F, 1024 * 768 * 4);
+			uint8_t* blarg = new uint8_t[windowWidth * windowHeight * 4];
+			memset(blarg, 0x4F, windowWidth * windowHeight * 4);
 
 			glGenBuffers(2, pbo);
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[1]);
-			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * 1024 * 768 * 4, blarg, GL_STREAM_DRAW);
+			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * windowWidth * windowHeight * 4, blarg, GL_STREAM_DRAW);
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[0]);
-			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * 1024 * 768 * 4, blarg, GL_STREAM_DRAW);
+			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * windowWidth * windowHeight * 4, blarg, GL_STREAM_DRAW);
 			int blerg = glGetError();
 			delete [] blarg;
 
@@ -362,8 +401,8 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 			blerg = glGetError();
 
-			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, 1024, 768);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, 1024, 768, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
+			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, windowWidth, windowHeight);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
 			blerg = glGetError();
 
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
@@ -371,6 +410,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
+			/*
+				Setup for XAudio2
+			*/
 			CoInitializeEx(NULL, COINIT_MULTITHREADED);
 
 			HRESULT hr;

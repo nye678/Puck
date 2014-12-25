@@ -1,4 +1,4 @@
-#include "puck.h"
+#include "puck_gamecommon.h"
 #include "math.h"
 #include "jr_color.h"
 #include "jr_draw.h"
@@ -32,7 +32,7 @@ game_state* state;
 	Initializes the game state.
 	NOTE: Once resource loading is in then load up the few resources we need here.
 */
-void InitializeGame(Systems* sys)
+extern "C" __declspec(dllexport) void InitializeGame(Systems* sys)
 {
 	float width = (float)sys->renderer->bufferWidth;
 	float height = (float)sys->renderer->bufferHeight;
@@ -79,7 +79,7 @@ rect CharToRect(char c)
 	Updates the game state each frame.
 	NOTE: This code is super hacked in at the moment.
 */
-void GameUpdate(Systems* sys)
+extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 {
 	float width = (float)sys->renderer->bufferWidth;
 	float height = (float)sys->renderer->bufferHeight;
