@@ -10,7 +10,7 @@
 	[
 		{
 			"name": "Puck Debug",
-			"shell_cmd": "call ..\\build\\build.bat"
+			"shell_cmd": "call ..\\proj\\build.bat"
 		}
 	]
 }
