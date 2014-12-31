@@ -1,4 +1,5 @@
 #include "puck_bmp.h"
+#include "jr_color.h"
 #include <Windows.h>
 #include <assert.h>
 
@@ -40,27 +41,23 @@ jr::BitMap* ReadBMP(jr::MemManager* mem, const char* filePath)
 		return nullptr;
 	}
 
-	size_t imageBufferSize = imageHeader.imageWidth * imageHeader.imageHeight * sizeof(uint32_t);
-	uintptr_t bitMapMemory = (uintptr_t)mem->Alloc(sizeof(jr::BitMap) + imageBufferSize);
+	size_t imageBufferSize = imageHeader.imageWidth * imageHeader.imageHeight * sizeof(jr::Color);
+	uintptr bitMapMemory = (uintptr)mem->Alloc(sizeof(jr::BitMap) + imageBufferSize);
 
 	jr::BitMap* bitMap = (jr::BitMap*)bitMapMemory;
-	bitMap->bitMap = (uint32_t*)(bitMapMemory + sizeof(jr::BitMap));
+	bitMap->data = (jr::Color*)(bitMapMemory + sizeof(jr::BitMap));
 	bitMap->width = imageHeader.imageWidth;
 	bitMap->height = imageHeader.imageHeight;
 
 	jr::ScopeStack stack = mem->PushScope();
-	uint8_t* pixels = (uint8_t*)stack.Alloc(4 * imageHeader.imageWidth);
+	uint32* pixels = (uint32*)stack.Alloc(sizeof(uint32) * imageHeader.imageWidth);
 	for (int i = imageHeader.imageHeight - 1; i >= 0 ; --i)
 	{
-		ReadFile(bmpHandle, (void*)pixels, 4 * imageHeader.imageWidth, &bytesRead, nullptr);
+		ReadFile(bmpHandle, (void*)pixels, sizeof(uint32) * imageHeader.imageWidth, &bytesRead, nullptr);
 
 		for (int x = 0; x < imageHeader.imageWidth; ++x)
 		{
-			bitMap->bitMap[x + i * imageHeader.imageWidth] = 
-				(uint32_t)pixels[4 * x] << 24 |
-				(uint32_t)pixels[4 * x + 1] << 16 |
-				(uint32_t)pixels[4 * x + 2] << 8 |
-				(uint32_t)pixels[4 * x + 3];
+			bitMap->data[x + i * imageHeader.imageWidth] = jr::RGBAIntToColor(pixels[x]);
 		}
 	}
 

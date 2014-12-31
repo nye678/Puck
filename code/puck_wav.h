@@ -11,29 +11,29 @@
 
 struct WaveChunkDescriptor
 {
-	uint32_t chunkId;
-	uint32_t chunkSize;
-	uint32_t format;
+	uint32 chunkId;
+	uint32 chunkSize;
+	uint32 format;
 };
 
 #pragma pack(1)
 struct WaveFormatChunk
 {
-	uint32_t formatChunkId;
-	uint32_t formatChunkSize;
-	uint16_t audioFormat;
-	uint16_t numChannels;
-	uint32_t sampleRate;
-	uint32_t byteRate;
-	uint16_t blockAlign;
-	uint16_t bitsPerSample;
+	uint32 formatChunkId;
+	uint32 formatChunkSize;
+	uint16 audioFormat;
+	uint16 numChannels;
+	uint32 sampleRate;
+	uint32 byteRate;
+	uint16 blockAlign;
+	uint16 bitsPerSample;
 };
 #pragma pack()
 
 struct WaveDataChunk
 {
-	uint32_t dataChunkId;
-	uint32_t dataChunkSize;
+	uint32 dataChunkId;
+	uint32 dataChunkSize;
 };
 
 jr::Sound* ReadWave(jr::MemManager* mem, const char* filePath);

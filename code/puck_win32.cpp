@@ -1,18 +1,17 @@
 #define _WIN32_DCOM
 #define _CRT_SECURE_NO_DEPRECATE
 
-#include "puck_gamecommon.h"
-#include "jr_memmanager.h"
 #include <windows.h>
 #include "GL\gl3w.h"
-#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
 #include "c:\Program Files (x86)\Microsoft DirectX SDK (June 2010)\Include\XAudio2.h"
 #include <xinput.h>
-#include <math.h>
 #include <new>
 #include <assert.h>
+#include "puck_gamecommon.h"
+#include "jr_pointerutils.h"
+#include "jr_memmanager.h"
 
 #pragma comment (lib, "xinput9_1_0.lib")
 #pragma comment (lib, "opengl32.lib")
@@ -120,12 +119,12 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	/*
 		Alloc a big block of memory to use.
 	*/
-	memBlock = VirtualAlloc((void*)0x0000000200000000, MEGABYTE(50), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	memBlock = VirtualAlloc((void*)0x0000000200000000, MEGABYTE(500), MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
 	assert(memBlock);
-	void* memHead = (void*)((uintptr_t)memBlock + sizeof(MemManager));
-	size_t memBlockSize = MEGABYTE(50) - sizeof(MemManager);
+	void* memHead = (void*)((uintptr_t)memBlock + sizeof(jr::MemManager));
+	size_t memBlockSize = MEGABYTE(500) - sizeof(jr::MemManager);
 	
-	sys.mem = new ((MemManager*)memBlock) MemManager(memHead, memBlockSize, MEGABYTE(20));
+	sys.mem = new ((jr::MemManager*)memBlock) jr::MemManager(memHead, memBlockSize, MEGABYTE(400));
 	
 	/*
 		Set up the rendering structs.
@@ -135,10 +134,10 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	renderBuffer->height = windowHeight;
 	renderBuffer->layers = 1;
 
-	renderer[0] = CreateRenderer(sys.mem, 64, 64 * sizeof(jr::DrawBitMapParams));
+	renderer[0] = CreateRenderer(sys.mem, 64, 64 * 50);
 	renderer[0]->bufferWidth = windowWidth;
 	renderer[0]->bufferHeight = windowHeight;
-	renderer[1] = CreateRenderer(sys.mem, 64, 64 * sizeof(jr::DrawBitMapParams));
+	renderer[1] = CreateRenderer(sys.mem, 64, 64 * 50);
 	renderer[1]->bufferWidth = windowWidth;
 	renderer[1]->bufferHeight = windowHeight;
 	sys.renderer = renderer[0];
@@ -254,9 +253,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		*/
 		glClear(GL_COLOR_BUFFER_BIT);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[0]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * windowWidth * windowHeight * 4, 0, GL_STREAM_DRAW);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * windowWidth * windowHeight * 4, 0, GL_STREAM_DRAW);
 		
-		renderBuffer->buffer[0] = (uint32_t*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_WRITE_ONLY);
+		renderBuffer->buffer[0] = (jr::Color*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_READ_WRITE);
 		if (renderBuffer->buffer[0] != nullptr)
 		{
 			RenderFrame(renderer[pboIndex], renderBuffer);
@@ -264,7 +263,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 
 		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
 
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_FLOAT, (void*)0);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 		
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -411,7 +410,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			hglrc = wglCreateContext(hdc);
 			wglMakeCurrent (hdc, hglrc);
 			int result = gl3wInit();
-			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
 
 			char *vertShader, *fragShader;
 			LoadTextFile("..\\data\\basic.vert", vertShader);
@@ -427,17 +426,12 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			glGenVertexArrays(1, &vertexArray);
 			glBindVertexArray(vertexArray);
-		
-			uint8_t* blarg = new uint8_t[windowWidth * windowHeight * 4];
-			memset(blarg, 0x4F, windowWidth * windowHeight * 4);
 
 			glGenBuffers(2, pbo);
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[1]);
-			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * windowWidth * windowHeight * 4, blarg, GL_STREAM_DRAW);
+			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * windowWidth * windowHeight * 4, nullptr, GL_STREAM_DRAW);
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[0]);
-			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint8_t) * windowWidth * windowHeight * 4, blarg, GL_STREAM_DRAW);
-			int blerg = glGetError();
-			delete [] blarg;
+			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * windowWidth * windowHeight * 4, nullptr, GL_STREAM_DRAW);
 
 			glUniform1i(texLoc, 0);
 			glActiveTexture(GL_TEXTURE0);
@@ -445,11 +439,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			glBindTexture(GL_TEXTURE_2D, texture);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			blerg = glGetError();
 
-			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGB8, windowWidth, windowHeight);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_BYTE, (void*)0);
-			blerg = glGetError();
+			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, windowWidth, windowHeight);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_FLOAT, (void*)0);
 
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 

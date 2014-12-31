@@ -5,7 +5,6 @@
 #include "jr_renderer.h"
 #include "jr_bitmap.h"
 #include "jr_sound.h"
-#include <stdint.h>
 
 /*
 	Shared definitions by both the Platform and Game layers.
@@ -13,10 +12,10 @@
 
 struct controllerState
 {
-	int16_t lStickX;
-	int16_t lStickY;
-	int16_t rStickX;
-	int16_t rStickY;
+	int16 lStickX;
+	int16 lStickY;
+	int16 rStickX;
+	int16 rStickY;
 	bool up;
 	bool down;
 	bool left;

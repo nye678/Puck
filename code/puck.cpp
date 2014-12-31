@@ -1,29 +1,116 @@
 #include "puck_gamecommon.h"
-#include "math.h"
 #include "jr_color.h"
 #include "jr_draw.h"
 #include "jr_bitmap.h"
 #include "jr_vec.h"
+#include "jr_matrix.h"
 
 using namespace jr;
+
+struct paddle_data
+{
+	Color color;
+	jr::vec2 pos;
+	float angle;
+	float halfWidth, halfHeight;
+	float speed;
+	char score;
+};
+
+void DrawPaddle(jr::Renderer* renderer, paddle_data* paddle)
+{
+	jr::mat3 model = jr::translation(paddle->pos.x, paddle->pos.y) * jr::rotation(paddle->angle);
+	jr::vec2 tl = model * jr::vec2(-paddle->halfWidth, -paddle->halfHeight);
+	jr::vec2 bl = model * jr::vec2(-paddle->halfWidth, paddle->halfHeight);
+	jr::vec2 tr = model * jr::vec2(paddle->halfWidth, -paddle->halfHeight);
+	jr::vec2 br = model * jr::vec2(paddle->halfWidth, paddle->halfHeight);
+
+	DrawTriangle(renderer, 0, tl, tr, bl, paddle->color);
+	DrawTriangle(renderer, 0, tr, br, bl, paddle->color);
+
+	rect r(paddle->pos.x - paddle->halfWidth, paddle->pos.x + paddle->halfWidth, paddle->pos.y - paddle->halfHeight, paddle->pos.y + paddle->halfHeight);
+	//DrawRectangle(renderer, 0, r, paddle->color);
+}
+
+void UpdatePaddle(paddle_data* paddle, float minY, float maxY, int16 stickX, int16 stickY, int32 deadzone)
+{
+	vec2 stick = vec2((float)stickX, (float)stickY);
+	vec2 normalizedStick = normalize(stick);
+	float magnitude = stick.length();
+	
+	if (magnitude > deadzone)
+	{
+		paddle->pos.y -= normalizedStick.y * paddle->speed;
+		if (paddle->pos.y < minY + paddle->halfHeight)
+			paddle->pos.y = minY + paddle->halfHeight;
+		if (paddle->pos.y > maxY - paddle->halfHeight)
+			paddle->pos.y = maxY - paddle->halfHeight;
+	}
+}
+
+struct puck_data
+{
+	Color color;
+	jr::vec2 pos;
+	jr::vec2 vel;
+	float halfWidth, halfHeight;
+	float speed, maxSpeed;
+};
+
+void DrawPuck(jr::Renderer* renderer, puck_data* puck)
+{
+	rect puckRect = rect(
+		puck->pos.x - puck->halfWidth, puck->pos.x + puck->halfWidth, 
+		puck->pos.y - puck->halfHeight, puck->pos.y + puck->halfHeight);
+	DrawRectangle(renderer, 0, puckRect, puck->color);
+}
 
 /*
 	Puck's one and only game state.
 */
 struct game_state
 {
+	puck_data puck;
+	paddle_data paddle1, paddle2;
+
 	jr::BitMap* fontBitMap;
 	jr::BitMap* titleBitMap;
 	jr::Sound* paddleSfx;
 	jr::Sound* scoreSfx;
-	jr::vec3 puckPos, puckVelocity;
-	float puckSpeed, puckMaxSpeed;
-	float p1x, p1y, p1speed;
-	float p2x, p2y, p2speed;
-	char p1Score, p2Score;
+
 	bool mainmenu;
 	bool paused;
 };
+
+void ResetGameState(game_state* state, float width, float height)
+{
+	state->paddle1.color = jr::color::Blue;
+	state->paddle1.pos = vec2(15.0f, height/2.0f - 50.0f);
+	state->paddle1.angle = 0.0f;
+	state->paddle1.halfWidth = 10.0f;
+	state->paddle1.halfHeight = 50.0f;
+	state->paddle1.speed = 10.0f;
+	state->paddle1.score = '0';
+
+	state->paddle2.color = jr::color::Red;
+	state->paddle2.pos = vec2(width - 15.0f, height/2.0f - 50.0f);
+	state->paddle2.angle = 0.0f;
+	state->paddle2.halfWidth = 10.0f;
+	state->paddle2.halfHeight = 50.0f;
+	state->paddle2.speed = 10.0f;
+	state->paddle2.score = '0';
+
+	state->puck.color = jr::color::Green;
+	state->puck.pos = vec2(width / 2.0f, height / 2.0f);
+	state->puck.vel = vec2(2.0f, 2.0f);
+	state->puck.halfWidth = 10.0f;
+	state->puck.halfHeight = 10.0f;
+	state->puck.speed = 2.0f;
+	state->puck.maxSpeed = 4.0f;
+
+	state->mainmenu = true;
+	state->paused = false;
+}
 
 /*
 	Initializes the game state.
@@ -36,30 +123,12 @@ extern "C" __declspec(dllexport) void InitializeGame(Systems* sys)
 
 	game_state* state = (game_state*)sys->mem->Alloc(sizeof(game_state));
 
-	state->fontBitMap = sys->debug->LoadBitMap("..\\data\\font.bmp");
 	state->titleBitMap = sys->debug->LoadBitMap("..\\data\\superpuck.bmp");
+	state->fontBitMap = sys->debug->LoadBitMap("..\\data\\font.bmp");
 	state->scoreSfx = sys->debug->LoadSound("..\\data\\Pickup_Coin.wav");
 	state->paddleSfx = sys->debug->LoadSound("..\\data\\blip.wav");
 
-	state->p1x = 5.0f;
-	state->p1y = height/2.0f - 50.0f;
-	state->p1speed = 10.0f;
-
-	state->p2x = width - 25.0f;
-	state->p2y = height/2.0f - 50.0f;
-	state->p2speed = 10.0f;
-
-	state->puckPos = vec3(width / 2.0f, height / 2.0f, 0.0f);
-	state->puckVelocity = vec3(2.0f, 2.0f, 0.0f);
-	state->puckSpeed = 2.0f;
-	state->puckMaxSpeed = 15.0f;
-
-	state->p1Score = '0';
-	state->p2Score = '0';
-
-	state->mainmenu = true;
-	state->paused = false;
-
+	ResetGameState(state, width, height);
 	sys->state = state;
 }
 
@@ -109,6 +178,19 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 	}
 	prevA = input->controllers[0].aButton;
 
+	state->paddle1.angle = 0.0f;
+	state->paddle2.angle = 0.0f;
+	if (input->controllers[0].lShoulder)
+	{
+		state->paddle1.angle = JR_PI / 12.0f;
+		state->paddle2.angle = JR_PI / 12.0f;
+	}
+	if (input->controllers[0].rShoulder)
+	{
+		state->paddle1.angle = JR_PI / -12.0f;
+		state->paddle2.angle = JR_PI / -12.0f;
+	}
+
 	if (state->mainmenu)
 	{
 		static bool prevDown = false;
@@ -128,131 +210,72 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 
 	if (!state->paused && !state->mainmenu)
 	{
-		/*
-			D-pad input
-			NOTE: Only works on player 1 paddle.
-		*/
-		if (input->controllers[0].up)
-		{
-			state->p1y -= state->p1speed;
-		}
-
-		if (input->controllers[0].down)
-		{
-			state->p1y += state->p1speed;
-		}
-
-		if (input->controllers[0].left)
-		{
-			state->p1x -= state->p1speed;
-		}
-
-		if (input->controllers[0].right)
-		{
-			state->p1x += state->p1speed;
-		}
+		puck_data* puck = &state->puck;
+		paddle_data* paddle1 = &state->paddle1;
+		paddle_data* paddle2 = &state->paddle2;
 
 		/*
 			Analog stick controls for player 1.
 		*/
 		controllerState &controller = input->controllers[0];
-		vec2 leftStick = vec2((float)controller.lStickX, (float)controller.lStickY);
-		vec2 leftNormalized = normalize(leftStick);
-		float magnitude = length(leftStick);
-		float normalizedMagnitude = 0;
-		int leftDeadZone = 7849;
-		if (magnitude > leftDeadZone)
-		{
-			if (magnitude > 32767)
-				magnitude = 32767;
-			magnitude -= leftDeadZone;
-			normalizedMagnitude = magnitude / (32767 - leftDeadZone);
-
-			state->p1y -= leftNormalized.y * state->p1speed;
-			if (state->p1y < 5.0f)
-				state->p1y = 5.0f;
-			if (state->p1y > height - 105.0f)
-				state->p1y = height - 105.0f;
-		}
-
-		/*
-			Analog stick controls for player 2.
-			NOTE: This on the right stick of the p1 controller for debug. Need to switch over to player 2 controller instead.
-		*/
-		float magnitude2 = sqrt((float)(input->controllers[0].rStickX * input->controllers[0].rStickX) + (float)(input->controllers[0].rStickY * input->controllers[0].rStickY));
-		float normalizedRX = input->controllers[0].rStickX / magnitude2;
-		float normalizedRY = input->controllers[0].rStickY / magnitude2;
-		float normalizedMagnitude2 = 0;
-		int rightDeadZone = 8689;
-		if (magnitude2 > rightDeadZone)
-		{
-			if (magnitude2 > 32767)
-				magnitude2 = 32767;
-			magnitude2 -= rightDeadZone;
-			normalizedMagnitude2 = magnitude2 / (32767 - rightDeadZone);
-
-			state->p2x = width - 25.0f;
-			state->p2y -= normalizedRY * state->p2speed;
-			if (state->p2y < 5.0f)
-				state->p2y = 5.0f;
-			if (state->p2y > height - 105.0f)
-				state->p2y = height - 105.0f;
-		}
+		
+		UpdatePaddle(paddle1, 5.0f, height - 5.0f, controller.lStickX, controller.lStickY, 7849);
+		UpdatePaddle(paddle2, 5.0f, height - 5.0f, controller.rStickY, controller.rStickY, 8689);
 
 		/*
 			Update the puck state.
 		*/
-		state->puckPos.x += state->puckVelocity.x;
-		state->puckPos.y += state->puckVelocity.y;
+		puck->pos += puck->vel;
 
 		/*
 			Check to see if the puck hit the player 1 paddle.
 		*/
-		if (state->puckPos.x < state->p1x + 20.0f 
-			&& state->puckPos.y < state->p1y + 100.0f
-			&& state->puckPos.y + 20.0f > state->p1y)
+		if (puck->pos.x - puck->halfWidth < paddle1->pos.x + paddle1->halfWidth
+			&& puck->pos.y - puck->halfWidth < paddle1->pos.y + paddle1->halfHeight
+			&& puck->pos.y + puck->halfWidth > paddle1->pos.y - paddle1->halfHeight)
 		{
-			state->puckPos.x = state->p1x + 20.5f;
-			if (state->puckSpeed < state->puckMaxSpeed)
-				state->puckSpeed += 0.5f;
-			state->puckVelocity = normalize(state->puckVelocity) * state->puckSpeed;
-			state->puckVelocity.x *= -1.0f;
+			puck->pos.x = paddle1->pos.x + paddle1->halfWidth + 15.0f;
+			if (puck->speed < puck->maxSpeed)
+				puck->speed += 0.5f;
+
+			jr::vec2 paddleNormal = jr::rotation(paddle1->angle) * jr::vec2(1.0f, 0.0f);
+			puck->vel = jr::reflect(jr::normalize(puck->vel) * puck->speed, paddleNormal);
 			soundplayer->sound = state->paddleSfx;
 		}
 
 		/*
 			Check to see if the puck hit the player 2 paddle.
 		*/
-		if (state->puckPos.x + 20.0f > state->p2x
-			&& state->puckPos.y < state->p2y + 100.0f
-			&& state->puckPos.y + 20.0f > state->p2y
-			)
+		if (puck->pos.x + puck->halfWidth > paddle2->pos.x - paddle2->halfWidth
+			&& puck->pos.y - puck->halfWidth < paddle2->pos.y + paddle2->halfHeight
+			&& puck->pos.y + puck->halfWidth > paddle2->pos.y - paddle2->halfHeight)
 		{
-			state->puckPos.x = state->p2x - 20.5f;
-			if (state->puckSpeed < state->puckMaxSpeed)
-				state->puckSpeed += 0.5f;
-			state->puckVelocity = normalize(state->puckVelocity) * state->puckSpeed;
-			state->puckVelocity.x *= -1.0f;
+			puck->pos.x = paddle2->pos.x - paddle2->halfWidth - 15.0f;
+			if (puck->speed < puck->maxSpeed)
+				puck->speed += 0.5f;
+
+			jr::vec2 paddleNormal = jr::rotation(paddle1->angle) * jr::vec2(-1.0f, 0.0f);
+			puck->vel = jr::reflect(jr::normalize(puck->vel) * puck->speed, paddleNormal);
 			soundplayer->sound = state->paddleSfx;
 		}
 
 		/*
 			Check to see if the puck scored for either player 1 or player 2.
 		*/
-		if (state->puckPos.x < 0.0f)
+		if (puck->pos.x - puck->halfHeight < 0.0f)
 		{
-			state->puckPos.x = width / 2.0f;
-			state->puckPos.y = height / 2.0f;
-			state->puckVelocity *= 0.7f;
-			state->p2Score++;
+			puck->pos.x = width / 2.0f;
+			puck->pos.y = height / 2.0f;
+			puck->vel *= 0.7f;
+			paddle2->score++;
 			soundplayer->sound = state->scoreSfx;
 		}
-		else if (state->puckPos.x > width - 20.0f)
+		else if (puck->pos.x + puck->halfHeight > width)
 		{
-			state->puckPos.x = width / 2.0f;
-			state->puckPos.y = height / 2.0f;
-			state->puckVelocity *= 0.7f;
-			state->p1Score++;
+			puck->pos.x = width / 2.0f;
+			puck->pos.y = height / 2.0f;
+			puck->vel *= 0.7f;
+			paddle1->score++;
 			soundplayer->sound = state->scoreSfx;
 		}
 
@@ -260,64 +283,49 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 			Resets the score once the a player scores 10 times.
 			NOTE: the ':' character is the ascii character after the 9 character.
 		*/
-		if (state->p1Score == ':' || state->p2Score == ':')
+		if (paddle1->score == ':' || paddle2->score == ':')
 		{
-			state->p1Score = '0';
-			state->p2Score = '0';
-			state->puckSpeed *= 0.5f;
-			state->mainmenu = true;
+			ResetGameState(state, width, height);
 		}
 
 		/*
 			Check to see if the puck hits either the top or bottom of the play area.
 		*/
-		if (state->puckPos.y < 0.0f)
+		if (puck->pos.y < 0.0f)
 		{
-			state->puckPos.y = 0.0f;
-			state->puckVelocity.y *= -1.0f;
+			jr::vec2 topBoundaryNormal(0.0f, -1.0f);
+			puck->pos.y = 0.0f;
+			puck->vel = jr::reflect(puck->vel, topBoundaryNormal);
 		}
-		else if (state->puckPos.y > height - 20.0f)
+		else if (puck->pos.y > height - puck->halfHeight)
 		{
-			state->puckPos.y = height - 20.0f;
-			state->puckVelocity.y *= -1.0f;
+			jr::vec2 bottomBoundaryNormal(0.0f, 1.0f);
+			puck->pos.y = height - 20.0f;
+			puck->vel = jr::reflect(puck->vel, bottomBoundaryNormal);
 		}
 	}
-
-	/*
-		Creates the rectangles used to draw the puck, paddles, and characters.
-	*/
-	rect puck = rect(
-		state->puckPos.x, state->puckPos.x + 20.0f, 
-		state->puckPos.y, state->puckPos.y + 20.0f);
-	rect paddle1 = rect(
-		state->p1x, state->p1x + 20.0f,
-		state->p1y, state->p1y + 100.0f);
-	rect paddle2 = rect(
-		state->p2x, state->p2x + 20.0f,
-		state->p2y, state->p2y + 100.0f);
-
-	rect colon = CharToRect(':');
-	rect p1Score = CharToRect(state->p1Score);
-	rect p2Score = CharToRect(state->p2Score);
 
 	/*
 		Render the current game state.
 	*/
 	if (sys->renderer)
 	{
+		// SuperPuck title
 		DrawBitMap(sys->renderer, 0, state->titleBitMap, 0, 0);
-		
+
 		if (!state->mainmenu)
 		{
+			// Renders score.
+			rect colon = CharToRect(':');
 			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, 500, 0, colon);
+			rect p1Score = CharToRect(state->paddle1.score);
 			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, 500-50, 0, p1Score);
+			rect p2Score = CharToRect(state->paddle2.score);
 			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, 500+50, 0, p2Score);
-			DrawRectangle(sys->renderer, 0, puck, 0x00FF0020);
-			DrawRectangle(sys->renderer, 0, paddle1, 0x0000FF20);
-			DrawRectangle(sys->renderer, 0, paddle2, 0xFF000020);
-			DrawRectangleLine(sys->renderer, 0, puck, color::Green);
-			DrawRectangleLine(sys->renderer, 0, paddle1, color::Blue);
-			DrawRectangleLine(sys->renderer, 0, paddle2, color::Red);
+
+			DrawPuck(sys->renderer, &state->puck);
+			DrawPaddle(sys->renderer, &state->paddle1);
+			DrawPaddle(sys->renderer, &state->paddle2);
 		}
 
 		if (state->paused)
@@ -332,7 +340,6 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 
 		if (state->mainmenu)
 		{
-
 			int pauseXPos = 400, pauseYPos = 500;
 			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 0, pauseYPos, CharToRect('S'));
 			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50, pauseYPos, CharToRect('t'));

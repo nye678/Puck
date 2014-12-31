@@ -50,7 +50,7 @@ jr::Sound* ReadWave(jr::MemManager* mem, const char* filePath)
 	sound->audioBytes = data.dataChunkSize;
 	sound->numChannels = format.numChannels;
 	sound->sampleRate = format.sampleRate;
-	sound->buffer = (uint8_t*)(soundmemory + sizeof(jr::Sound));
+	sound->buffer = (uint8*)(soundmemory + sizeof(jr::Sound));
 
 	ReadFile(wavHandle, (void*)(sound->buffer), data.dataChunkSize, &bytesRead, nullptr);
 	CloseHandle(wavHandle);
