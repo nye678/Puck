@@ -9,6 +9,25 @@
 /*
 	Shared definitions by both the Platform and Game layers.
 */
+enum button_state
+{
+	None, Released, Pressed, Held
+};
+
+button_state UpdateButton(bool current, button_state prev)
+{
+	if (current)
+	{
+		if (prev == Pressed || prev == Held)
+			return Held;
+		else
+			return Pressed;
+	}
+	else if (prev == Pressed || prev == Held)
+		return Released;
+	else
+		return None;
+}
 
 struct controllerState
 {
@@ -16,20 +35,27 @@ struct controllerState
 	int16 lStickY;
 	int16 rStickX;
 	int16 rStickY;
-	bool up;
-	bool down;
-	bool left;
-	bool right;
-	bool start;
-	bool back;
-	bool lThumb;
-	bool rThumb;
-	bool lShoulder;
-	bool rShoulder;
-	bool aButton;
-	bool bButton;
-	bool xButton;
-	bool yButton;
+	button_state up;
+	button_state down;
+	button_state left;
+	button_state right;
+	button_state start;
+	button_state back;
+	button_state lThumb;
+	button_state rThumb;
+	button_state lShoulder;
+	button_state rShoulder;
+	button_state aButton;
+	button_state bButton;
+	button_state xButton;
+	button_state yButton;
+
+	controllerState() 
+		: up(None), down(None), left(None), right(None), 
+		  start(None), back(None), lThumb(None), rThumb(None), 
+		  lShoulder(None), rShoulder(None), aButton(None), 
+		  bButton(None), xButton(None), yButton(None)
+	{}
 };
 
 struct game_input

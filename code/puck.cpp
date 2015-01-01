@@ -15,6 +15,7 @@ struct paddle_data
 	float halfWidth, halfHeight;
 	float speed;
 	char score;
+	char moved;
 };
 
 void DrawPaddle(jr::Renderer* renderer, paddle_data* paddle)
@@ -34,6 +35,8 @@ void DrawPaddle(jr::Renderer* renderer, paddle_data* paddle)
 
 void UpdatePaddle(paddle_data* paddle, float minY, float maxY, int16 stickX, int16 stickY, int32 deadzone)
 {
+	paddle->moved = false;
+
 	vec2 stick = vec2((float)stickX, (float)stickY);
 	vec2 normalizedStick = normalize(stick);
 	float magnitude = stick.length();
@@ -45,6 +48,7 @@ void UpdatePaddle(paddle_data* paddle, float minY, float maxY, int16 stickX, int
 			paddle->pos.y = minY + paddle->halfHeight;
 		if (paddle->pos.y > maxY - paddle->halfHeight)
 			paddle->pos.y = maxY - paddle->halfHeight;
+		paddle->moved = true;
 	}
 }
 
@@ -54,7 +58,7 @@ struct puck_data
 	jr::vec2 pos;
 	jr::vec2 vel;
 	float halfWidth, halfHeight;
-	float speed, maxSpeed;
+	float speed, maxSpeed, minSpeed;
 };
 
 void DrawPuck(jr::Renderer* renderer, puck_data* puck)
@@ -91,6 +95,7 @@ void ResetGameState(game_state* state, float width, float height)
 	state->paddle1.halfHeight = 50.0f;
 	state->paddle1.speed = 10.0f;
 	state->paddle1.score = '0';
+	state->paddle1.moved = false;
 
 	state->paddle2.color = jr::color::Red;
 	state->paddle2.pos = vec2(width - 15.0f, height/2.0f - 50.0f);
@@ -99,6 +104,7 @@ void ResetGameState(game_state* state, float width, float height)
 	state->paddle2.halfHeight = 50.0f;
 	state->paddle2.speed = 10.0f;
 	state->paddle2.score = '0';
+	state->paddle2.moved = false;
 
 	state->puck.color = jr::color::Green;
 	state->puck.pos = vec2(width / 2.0f, height / 2.0f);
@@ -106,7 +112,8 @@ void ResetGameState(game_state* state, float width, float height)
 	state->puck.halfWidth = 10.0f;
 	state->puck.halfHeight = 10.0f;
 	state->puck.speed = 2.0f;
-	state->puck.maxSpeed = 4.0f;
+	state->puck.maxSpeed = 8.0f;
+	state->puck.minSpeed = 2.0f;
 
 	state->mainmenu = true;
 	state->paused = false;
@@ -160,32 +167,26 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 	auto input = sys->input;
 	auto soundplayer = sys->soundplayer;
 
-	static bool prevStart = false;
-	if (prevStart && !input->controllers[0].start)
+	if (input->controllers[0].start == button_state::Released)
 	{
 		state->paused = !state->paused;
 	}
-	prevStart = input->controllers[0].start;
 
 	static bool prevA = false;
 	static bool startSelected = true;
-	if (prevA && !input->controllers[0].aButton)
+	if (input->controllers[0].aButton == button_state::Released && startSelected)
 	{
-		if (startSelected)
-		{
-			state->mainmenu = false;
-		}
+		state->mainmenu = false;
 	}
-	prevA = input->controllers[0].aButton;
 
 	state->paddle1.angle = 0.0f;
 	state->paddle2.angle = 0.0f;
-	if (input->controllers[0].lShoulder)
+	if (input->controllers[0].lShoulder == button_state::Held)
 	{
 		state->paddle1.angle = JR_PI / 12.0f;
 		state->paddle2.angle = JR_PI / 12.0f;
 	}
-	if (input->controllers[0].rShoulder)
+	else if (input->controllers[0].rShoulder == button_state::Held)
 	{
 		state->paddle1.angle = JR_PI / -12.0f;
 		state->paddle2.angle = JR_PI / -12.0f;
@@ -193,19 +194,15 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 
 	if (state->mainmenu)
 	{
-		static bool prevDown = false;
-		if (!prevDown && input->controllers[0].down)
+		if (input->controllers[0].down == button_state::Pressed)
 		{
 			startSelected = !startSelected;
 		}
-		prevDown = input->controllers[0].down;
 	
-		static bool prevUp = false;
-		if (!prevUp && input->controllers[0].up)
+		if (input->controllers[0].up == button_state::Pressed)
 		{
 			startSelected = !startSelected;
 		}
-		prevUp = input->controllers[0].up;
 	}
 
 	if (!state->paused && !state->mainmenu)
@@ -235,8 +232,8 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 			&& puck->pos.y + puck->halfWidth > paddle1->pos.y - paddle1->halfHeight)
 		{
 			puck->pos.x = paddle1->pos.x + paddle1->halfWidth + 15.0f;
-			if (puck->speed < puck->maxSpeed)
-				puck->speed += 0.5f;
+			if (paddle1->moved)
+				puck->speed = jr::minf(puck->speed + 0.5f, puck->maxSpeed);
 
 			jr::vec2 paddleNormal = jr::rotation(paddle1->angle) * jr::vec2(1.0f, 0.0f);
 			puck->vel = jr::reflect(jr::normalize(puck->vel) * puck->speed, paddleNormal);
@@ -251,8 +248,8 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 			&& puck->pos.y + puck->halfWidth > paddle2->pos.y - paddle2->halfHeight)
 		{
 			puck->pos.x = paddle2->pos.x - paddle2->halfWidth - 15.0f;
-			if (puck->speed < puck->maxSpeed)
-				puck->speed += 0.5f;
+			if (paddle2->moved)
+				puck->speed = jr::minf(puck->speed + 0.5f, puck->maxSpeed);
 
 			jr::vec2 paddleNormal = jr::rotation(paddle1->angle) * jr::vec2(-1.0f, 0.0f);
 			puck->vel = jr::reflect(jr::normalize(puck->vel) * puck->speed, paddleNormal);

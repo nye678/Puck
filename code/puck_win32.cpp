@@ -313,20 +313,20 @@ DWORD WINAPI GameUpdateProc(void* param)
 			{
 				XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
 
-				sys->input->controllers[i].up = (pad->wButtons & XINPUT_GAMEPAD_DPAD_UP);
-				sys->input->controllers[i].down = (pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN);
-				sys->input->controllers[i].left = (pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT);
-				sys->input->controllers[i].right = (pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT);
-				sys->input->controllers[i].start = (pad->wButtons & XINPUT_GAMEPAD_START);
-				sys->input->controllers[i].back = (pad->wButtons & XINPUT_GAMEPAD_BACK);
-				sys->input->controllers[i].lThumb = (pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB);
-				sys->input->controllers[i].rThumb = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB);
-				sys->input->controllers[i].lShoulder = (pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER);
-				sys->input->controllers[i].rShoulder = (pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER);
-				sys->input->controllers[i].aButton = (pad->wButtons & XINPUT_GAMEPAD_A);
-				sys->input->controllers[i].bButton = (pad->wButtons & XINPUT_GAMEPAD_B);
-				sys->input->controllers[i].xButton = (pad->wButtons & XINPUT_GAMEPAD_X);
-				sys->input->controllers[i].yButton = (pad->wButtons & XINPUT_GAMEPAD_Y);
+				sys->input->controllers[i].up = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_UP), sys->input->controllers[i].up);
+				sys->input->controllers[i].down = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN), sys->input->controllers[i].down);
+				sys->input->controllers[i].left = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT), sys->input->controllers[i].left);
+				sys->input->controllers[i].right = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT), sys->input->controllers[i].right);
+				sys->input->controllers[i].start = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_START), sys->input->controllers[i].start);
+				sys->input->controllers[i].back = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_BACK), sys->input->controllers[i].back);
+				sys->input->controllers[i].lThumb = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB), sys->input->controllers[i].lThumb);
+				sys->input->controllers[i].rThumb = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB), sys->input->controllers[i].rThumb);
+				sys->input->controllers[i].lShoulder = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER), sys->input->controllers[i].lShoulder);
+				sys->input->controllers[i].rShoulder = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER), sys->input->controllers[i].rShoulder);
+				sys->input->controllers[i].aButton = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_A), sys->input->controllers[i].aButton);
+				sys->input->controllers[i].bButton = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_B), sys->input->controllers[i].bButton);
+				sys->input->controllers[i].xButton = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_X), sys->input->controllers[i].xButton);
+				sys->input->controllers[i].yButton = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_Y), sys->input->controllers[i].yButton);
 
 				sys->input->controllers[i].lStickX = pad->sThumbLX;
 				sys->input->controllers[i].lStickY = pad->sThumbLY;
