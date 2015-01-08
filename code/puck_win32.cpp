@@ -133,6 +133,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	renderBuffer->width = windowWidth;
 	renderBuffer->height = windowHeight;
 	renderBuffer->layers = 1;
+	renderBuffer->buffer[0] = (uint32*)sys.mem->Alloc(sizeof(uint32) * windowWidth * windowHeight);
 
 	renderer[0] = CreateRenderer(sys.mem, 64, 64 * 50);
 	renderer[0]->bufferWidth = windowWidth;
@@ -190,6 +191,44 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 				running = false;
 				LeaveCriticalSection(&GameUpdateLock);
 			}
+			else if (msg.message == WM_KEYDOWN /*|| msg.message == WM_KEYUP*/)
+			{
+				if (msg.wParam == 'W')
+				{
+					UpdateButton(msg.message == WM_KEYDOWN, sys.input->keyboard.wKey);
+				}
+				else if (msg.wParam == 'A')
+				{
+					UpdateButton(msg.message == WM_KEYDOWN, sys.input->keyboard.aKey);
+				}
+				else if (msg.wParam == 'S')
+				{
+					UpdateButton(msg.message == WM_KEYDOWN, sys.input->keyboard.sKey);
+				}
+				else if (msg.wParam == 'D')
+				{
+					UpdateButton(msg.message == WM_KEYDOWN, sys.input->keyboard.dKey);
+				}
+			}
+			else if (msg.message == WM_KEYUP)
+			{
+				if (msg.wParam == 'W')
+				{
+					UpdateButton(false, sys.input->keyboard.wKey);
+				}
+				else if (msg.wParam == 'A')
+				{
+					UpdateButton(false, sys.input->keyboard.aKey);
+				}
+				else if (msg.wParam == 'S')
+				{
+					UpdateButton(false, sys.input->keyboard.sKey);
+				}
+				else if (msg.wParam == 'D')
+				{
+					UpdateButton(false, sys.input->keyboard.dKey);
+				}
+			}
 
 			TranslateMessage(&msg);
 			DispatchMessage(&msg);
@@ -201,6 +240,9 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		int nextIndex = pboIndex;
 		pboIndex = (pboIndex + 1) % 2;
 
+		/*
+			Check to see if the game dll has been updated.
+		*/
 		gamelibFileHandle = CreateFile("puck.dll", GENERIC_READ, FILE_SHARE_READ, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
 		FILETIME gamelibCurrentTime = {};
 		GetFileTime(gamelibFileHandle, NULL, NULL, &gamelibCurrentTime);
@@ -251,21 +293,20 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		/*
 			Render the current frame using the command queue generated during the previous frame.
 		*/
-		glClear(GL_COLOR_BUFFER_BIT);
+		RenderFrame(renderer[pboIndex], renderBuffer);
+
+		/*
+			Upload the new frame to the graphics card.
+		*/
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[0]);
-		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * windowWidth * windowHeight * 4, 0, GL_STREAM_DRAW);
-		
-		renderBuffer->buffer[0] = (jr::Color*)glMapBuffer(GL_PIXEL_UNPACK_BUFFER, GL_READ_WRITE);
-		if (renderBuffer->buffer[0] != nullptr)
-		{
-			RenderFrame(renderer[pboIndex], renderBuffer);
-		}
-
-		glUnmapBuffer(GL_PIXEL_UNPACK_BUFFER);
-
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_FLOAT, (void*)0);
+		glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint32) * windowWidth * windowHeight, renderBuffer->buffer[0], GL_STREAM_DRAW);
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8, (void*)0);
 		glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 		
+		/*
+			Tell the graphics card to draw the new frame.
+		*/
+		glClear(GL_COLOR_BUFFER_BIT);
 		glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 		SwapBuffers(hdc);
 
@@ -303,6 +344,9 @@ DWORD WINAPI GameUpdateProc(void* param)
 	
 	while (true)
 	{
+		/*
+			Poll the controller state.
+		*/
 		for(int i = 0; i < 4; ++i)
 		{
 			XINPUT_STATE controllerState;
@@ -313,20 +357,20 @@ DWORD WINAPI GameUpdateProc(void* param)
 			{
 				XINPUT_GAMEPAD *pad = &controllerState.Gamepad;
 
-				sys->input->controllers[i].up = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_UP), sys->input->controllers[i].up);
-				sys->input->controllers[i].down = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN), sys->input->controllers[i].down);
-				sys->input->controllers[i].left = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT), sys->input->controllers[i].left);
-				sys->input->controllers[i].right = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT), sys->input->controllers[i].right);
-				sys->input->controllers[i].start = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_START), sys->input->controllers[i].start);
-				sys->input->controllers[i].back = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_BACK), sys->input->controllers[i].back);
-				sys->input->controllers[i].lThumb = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB), sys->input->controllers[i].lThumb);
-				sys->input->controllers[i].rThumb = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB), sys->input->controllers[i].rThumb);
-				sys->input->controllers[i].lShoulder = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER), sys->input->controllers[i].lShoulder);
-				sys->input->controllers[i].rShoulder = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER), sys->input->controllers[i].rShoulder);
-				sys->input->controllers[i].aButton = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_A), sys->input->controllers[i].aButton);
-				sys->input->controllers[i].bButton = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_B), sys->input->controllers[i].bButton);
-				sys->input->controllers[i].xButton = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_X), sys->input->controllers[i].xButton);
-				sys->input->controllers[i].yButton = UpdateButton((pad->wButtons & XINPUT_GAMEPAD_Y), sys->input->controllers[i].yButton);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_UP), sys->input->controllers[i].up);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_DOWN), sys->input->controllers[i].down);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_LEFT), sys->input->controllers[i].left);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_DPAD_RIGHT), sys->input->controllers[i].right);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_START), sys->input->controllers[i].start);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_BACK), sys->input->controllers[i].back);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_LEFT_THUMB), sys->input->controllers[i].lThumb);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_RIGHT_THUMB), sys->input->controllers[i].rThumb);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_LEFT_SHOULDER), sys->input->controllers[i].lShoulder);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_RIGHT_SHOULDER), sys->input->controllers[i].rShoulder);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_A), sys->input->controllers[i].aButton);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_B), sys->input->controllers[i].bButton);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_X), sys->input->controllers[i].xButton);
+				UpdateButton((pad->wButtons & XINPUT_GAMEPAD_Y), sys->input->controllers[i].yButton);
 
 				sys->input->controllers[i].lStickX = pad->sThumbLX;
 				sys->input->controllers[i].lStickY = pad->sThumbLY;
@@ -410,7 +454,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			hglrc = wglCreateContext(hdc);
 			wglMakeCurrent (hdc, hglrc);
 			int result = gl3wInit();
-			glClearColor(0.5f, 0.5f, 0.5f, 1.0f);
+			glClearColor(0.5f, 0.5f, 0.5f, 0.5f);
 
 			char *vertShader, *fragShader;
 			LoadTextFile("..\\data\\basic.vert", vertShader);
@@ -429,9 +473,9 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 
 			glGenBuffers(2, pbo);
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[1]);
-			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * windowWidth * windowHeight * 4, nullptr, GL_STREAM_DRAW);
+			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint32) * windowWidth * windowHeight, nullptr, GL_STREAM_DRAW);
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, pbo[0]);
-			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(float) * windowWidth * windowHeight * 4, nullptr, GL_STREAM_DRAW);
+			glBufferData(GL_PIXEL_UNPACK_BUFFER, sizeof(uint32) * windowWidth * windowHeight, nullptr, GL_STREAM_DRAW);
 
 			glUniform1i(texLoc, 0);
 			glActiveTexture(GL_TEXTURE0);
@@ -441,12 +485,13 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT message, WPARAM wParam, LPARAM lParam)
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
 			glTexStorage2D(GL_TEXTURE_2D, 1, GL_RGBA8, windowWidth, windowHeight);
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_FLOAT, (void*)0);
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, windowWidth, windowHeight, GL_RGBA, GL_UNSIGNED_INT_8_8_8_8 , (void*)0);
 
 			glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
 
 			glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			//glBlendFunc(GL_SRC_ALPHA, GL_ONE);
 
 			/*
 				Setup for XAudio2

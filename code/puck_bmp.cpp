@@ -41,11 +41,11 @@ jr::BitMap* ReadBMP(jr::MemManager* mem, const char* filePath)
 		return nullptr;
 	}
 
-	size_t imageBufferSize = imageHeader.imageWidth * imageHeader.imageHeight * sizeof(jr::Color);
+	size_t imageBufferSize = imageHeader.imageWidth * imageHeader.imageHeight * sizeof(uint32);
 	uintptr bitMapMemory = (uintptr)mem->Alloc(sizeof(jr::BitMap) + imageBufferSize);
 
 	jr::BitMap* bitMap = (jr::BitMap*)bitMapMemory;
-	bitMap->data = (jr::Color*)(bitMapMemory + sizeof(jr::BitMap));
+	bitMap->data = (uint32*)(bitMapMemory + sizeof(jr::BitMap));
 	bitMap->width = imageHeader.imageWidth;
 	bitMap->height = imageHeader.imageHeight;
 
@@ -57,7 +57,7 @@ jr::BitMap* ReadBMP(jr::MemManager* mem, const char* filePath)
 
 		for (int x = 0; x < imageHeader.imageWidth; ++x)
 		{
-			bitMap->data[x + i * imageHeader.imageWidth] = jr::RGBAIntToColor(pixels[x]);
+			bitMap->data[x + i * imageHeader.imageWidth] = pixels[x];
 		}
 	}
 

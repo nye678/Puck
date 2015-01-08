@@ -14,19 +14,19 @@ enum button_state
 	None, Released, Pressed, Held
 };
 
-button_state UpdateButton(bool current, button_state prev)
+void UpdateButton(bool current, button_state &prev)
 {
 	if (current)
 	{
 		if (prev == Pressed || prev == Held)
-			return Held;
+			prev = Held;
 		else
-			return Pressed;
+			prev = Pressed;
 	}
 	else if (prev == Pressed || prev == Held)
-		return Released;
+		prev = Released;
 	else
-		return None;
+		prev = None;
 }
 
 struct controllerState
@@ -58,9 +58,23 @@ struct controllerState
 	{}
 };
 
+struct keyboardState
+{
+	button_state wKey, aKey, sKey, dKey;
+	button_state upKey, leftKey, downKey, rightKey;
+	button_state enterKey, escKey;
+
+	keyboardState()
+		: wKey(None), aKey(None), sKey(None), dKey(None),
+		  upKey(None), leftKey(None), downKey(None), rightKey(None),
+		  enterKey(None), escKey(None)
+  	{}
+};
+
 struct game_input
 {
 	controllerState controllers[4];
+	keyboardState keyboard;
 };
 
 // Total hack. Needs to be replaced. Can only play

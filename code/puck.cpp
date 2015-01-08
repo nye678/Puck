@@ -1,3 +1,11 @@
+// Super Puck check list
+// Switch to checking a second player controller
+// keyboard support
+// p2 AI@
+// quit menu item doesn't work
+// no quit to main
+// analog stick menu move
+
 #include "puck_gamecommon.h"
 #include "jr_color.h"
 #include "jr_draw.h"
@@ -20,7 +28,7 @@ struct paddle_data
 
 void DrawPaddle(jr::Renderer* renderer, paddle_data* paddle)
 {
-	jr::mat3 model = jr::translation(paddle->pos.x, paddle->pos.y) * jr::rotation(paddle->angle);
+	jr::mat3 model = jr::mat3::translation(paddle->pos.x, paddle->pos.y) * jr::mat3::rotation(paddle->angle);
 	jr::vec2 tl = model * jr::vec2(-paddle->halfWidth, -paddle->halfHeight);
 	jr::vec2 bl = model * jr::vec2(-paddle->halfWidth, paddle->halfHeight);
 	jr::vec2 tr = model * jr::vec2(paddle->halfWidth, -paddle->halfHeight);
@@ -30,7 +38,7 @@ void DrawPaddle(jr::Renderer* renderer, paddle_data* paddle)
 	DrawTriangle(renderer, 0, tr, br, bl, paddle->color);
 
 	rect r(paddle->pos.x - paddle->halfWidth, paddle->pos.x + paddle->halfWidth, paddle->pos.y - paddle->halfHeight, paddle->pos.y + paddle->halfHeight);
-	//DrawRectangle(renderer, 0, r, paddle->color);
+	DrawRectangleLine(renderer, 0, r, jr::color::White);
 }
 
 void UpdatePaddle(paddle_data* paddle, float minY, float maxY, int16 stickX, int16 stickY, int32 deadzone)
@@ -66,7 +74,11 @@ void DrawPuck(jr::Renderer* renderer, puck_data* puck)
 	rect puckRect = rect(
 		puck->pos.x - puck->halfWidth, puck->pos.x + puck->halfWidth, 
 		puck->pos.y - puck->halfHeight, puck->pos.y + puck->halfHeight);
-	DrawRectangle(renderer, 0, puckRect, puck->color);
+
+	jr::Color c(0.0f, puck->speed / puck->maxSpeed, 0.0f, 1.0f);
+
+	DrawRectangle(renderer, 0, puckRect, c);
+	DrawRectangleLine(renderer, 0, puckRect, jr::color::White);
 }
 
 /*
@@ -88,7 +100,7 @@ struct game_state
 
 void ResetGameState(game_state* state, float width, float height)
 {
-	state->paddle1.color = jr::color::Blue;
+	state->paddle1.color = jr::Color(0.0f, 0.0f, 1.0f, 0.5f);
 	state->paddle1.pos = vec2(15.0f, height/2.0f - 50.0f);
 	state->paddle1.angle = 0.0f;
 	state->paddle1.halfWidth = 10.0f;
@@ -97,7 +109,7 @@ void ResetGameState(game_state* state, float width, float height)
 	state->paddle1.score = '0';
 	state->paddle1.moved = false;
 
-	state->paddle2.color = jr::color::Red;
+	state->paddle2.color = jr::Color(1.0f, 0.0f, 0.0f, 0.5f);
 	state->paddle2.pos = vec2(width - 15.0f, height/2.0f - 50.0f);
 	state->paddle2.angle = 0.0f;
 	state->paddle2.halfWidth = 10.0f;
@@ -106,7 +118,7 @@ void ResetGameState(game_state* state, float width, float height)
 	state->paddle2.score = '0';
 	state->paddle2.moved = false;
 
-	state->puck.color = jr::color::Green;
+	state->puck.color = jr::Color(0.0f, 1.0f, 0.0f, 0.5f);
 	state->puck.pos = vec2(width / 2.0f, height / 2.0f);
 	state->puck.vel = vec2(2.0f, 2.0f);
 	state->puck.halfWidth = 10.0f;
@@ -130,6 +142,7 @@ extern "C" __declspec(dllexport) void InitializeGame(Systems* sys)
 
 	game_state* state = (game_state*)sys->mem->Alloc(sizeof(game_state));
 
+	//state->titleBitMap = sys->debug->LoadBitMap("..\\data\\colortest.bmp");
 	state->titleBitMap = sys->debug->LoadBitMap("..\\data\\superpuck.bmp");
 	state->fontBitMap = sys->debug->LoadBitMap("..\\data\\font.bmp");
 	state->scoreSfx = sys->debug->LoadSound("..\\data\\Pickup_Coin.wav");
@@ -192,6 +205,38 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 		state->paddle2.angle = JR_PI / -12.0f;
 	}
 
+	if (state->paddle1.angle > 2.0f * JR_PI)
+	{
+		state->paddle1.angle -= 2.0f * JR_PI;
+		state->paddle2.angle -= 2.0f * JR_PI;
+	}
+
+	if (state->paddle1.angle < -2.0f * JR_PI)
+	{
+		state->paddle1.angle += 2.0f * JR_PI;
+		state->paddle2.angle += 2.0f * JR_PI;
+	}
+
+	if (input->keyboard.wKey == button_state::Pressed || input->keyboard.wKey == button_state::Held)
+	{
+		state->paddle1.pos.y -= state->paddle1.speed;
+		if (state->paddle1.pos.y < 5.0f + state->paddle1.halfHeight)
+			state->paddle1.pos.y = 5.0f + state->paddle1.halfHeight;
+		if (state->paddle1.pos.y > height - 5.0f - state->paddle1.halfHeight)
+			state->paddle1.pos.y = height - 5.0f - state->paddle1.halfHeight;
+		state->paddle1.moved = true;
+	}
+
+	if (input->keyboard.sKey == button_state::Pressed || input->keyboard.sKey == button_state::Held)
+	{
+		state->paddle1.pos.y += state->paddle1.speed;
+		if (state->paddle1.pos.y < 5.0f + state->paddle1.halfHeight)
+			state->paddle1.pos.y = 5.0f + state->paddle1.halfHeight;
+		if (state->paddle1.pos.y > height - 5.0f - state->paddle1.halfHeight)
+			state->paddle1.pos.y = height - 5.0f - state->paddle1.halfHeight;
+		state->paddle1.moved = true;
+	}
+
 	if (state->mainmenu)
 	{
 		if (input->controllers[0].down == button_state::Pressed)
@@ -235,7 +280,7 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 			if (paddle1->moved)
 				puck->speed = jr::minf(puck->speed + 0.5f, puck->maxSpeed);
 
-			jr::vec2 paddleNormal = jr::rotation(paddle1->angle) * jr::vec2(1.0f, 0.0f);
+			jr::vec2 paddleNormal = jr::mat3::rotation(paddle1->angle) * jr::vec2(1.0f, 0.0f);
 			puck->vel = jr::reflect(jr::normalize(puck->vel) * puck->speed, paddleNormal);
 			soundplayer->sound = state->paddleSfx;
 		}
@@ -248,10 +293,9 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 			&& puck->pos.y + puck->halfWidth > paddle2->pos.y - paddle2->halfHeight)
 		{
 			puck->pos.x = paddle2->pos.x - paddle2->halfWidth - 15.0f;
-			if (paddle2->moved)
-				puck->speed = jr::minf(puck->speed + 0.5f, puck->maxSpeed);
+			puck->speed = jr::minf(puck->speed + 0.5f, puck->maxSpeed);
 
-			jr::vec2 paddleNormal = jr::rotation(paddle1->angle) * jr::vec2(-1.0f, 0.0f);
+			jr::vec2 paddleNormal = jr::mat3::rotation(paddle1->angle) * jr::vec2(-1.0f, 0.0f);
 			puck->vel = jr::reflect(jr::normalize(puck->vel) * puck->speed, paddleNormal);
 			soundplayer->sound = state->paddleSfx;
 		}
@@ -288,16 +332,16 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 		/*
 			Check to see if the puck hits either the top or bottom of the play area.
 		*/
-		if (puck->pos.y < 0.0f)
+		if (puck->pos.y - puck->halfHeight < 0.0f)
 		{
 			jr::vec2 topBoundaryNormal(0.0f, -1.0f);
-			puck->pos.y = 0.0f;
+			puck->pos.y = puck->halfHeight;
 			puck->vel = jr::reflect(puck->vel, topBoundaryNormal);
 		}
-		else if (puck->pos.y > height - puck->halfHeight)
+		else if (puck->pos.y + puck->halfHeight > height)
 		{
 			jr::vec2 bottomBoundaryNormal(0.0f, 1.0f);
-			puck->pos.y = height - 20.0f;
+			puck->pos.y = height - puck->halfHeight;
 			puck->vel = jr::reflect(puck->vel, bottomBoundaryNormal);
 		}
 	}
@@ -309,6 +353,16 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 	{
 		// SuperPuck title
 		DrawBitMap(sys->renderer, 0, state->titleBitMap, 0, 0);
+
+		if (state->paused)
+		{
+			int pauseXPos = 400, pauseYPos = 500;
+			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 0, pauseYPos, CharToRect('P'));
+			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50, pauseYPos, CharToRect('a'));
+			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50 * 2, pauseYPos, CharToRect('u'));
+			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50 * 3, pauseYPos, CharToRect('s'));
+			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50 * 4, pauseYPos, CharToRect('e'));
+		}
 
 		if (!state->mainmenu)
 		{
@@ -325,18 +379,9 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 			DrawPaddle(sys->renderer, &state->paddle2);
 		}
 
-		if (state->paused)
-		{
-			int pauseXPos = 400, pauseYPos = 500;
-			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 0, pauseYPos, CharToRect('P'));
-			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50, pauseYPos, CharToRect('a'));
-			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50 * 2, pauseYPos, CharToRect('u'));
-			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50 * 3, pauseYPos, CharToRect('s'));
-			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50 * 4, pauseYPos, CharToRect('e'));
-		}
-
 		if (state->mainmenu)
 		{
+			
 			int pauseXPos = 400, pauseYPos = 500;
 			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 0, pauseYPos, CharToRect('S'));
 			DrawBitMapTile(sys->renderer, 0, state->fontBitMap, pauseXPos + 50, pauseYPos, CharToRect('t'));
