@@ -182,6 +182,8 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	*/
 	while (running)
 	{
+		UpdateKeys(&sys.input->keyboard);
+
 		MSG msg = {};
 		while (PeekMessage(&msg, 0, 0, 0, PM_REMOVE))
 		{
@@ -191,42 +193,49 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 				running = false;
 				LeaveCriticalSection(&GameUpdateLock);
 			}
-			else if (msg.message == WM_KEYDOWN /*|| msg.message == WM_KEYUP*/)
+			else if (msg.message == WM_KEYDOWN || msg.message == WM_KEYUP)
 			{
+				bool isDown = msg.message == WM_KEYDOWN;
+
 				if (msg.wParam == 'W')
 				{
-					UpdateButton(msg.message == WM_KEYDOWN, sys.input->keyboard.wKey);
+					UpdateButton(isDown, sys.input->keyboard.wKey);
 				}
 				else if (msg.wParam == 'A')
 				{
-					UpdateButton(msg.message == WM_KEYDOWN, sys.input->keyboard.aKey);
+					UpdateButton(isDown, sys.input->keyboard.aKey);
 				}
 				else if (msg.wParam == 'S')
 				{
-					UpdateButton(msg.message == WM_KEYDOWN, sys.input->keyboard.sKey);
+					UpdateButton(isDown, sys.input->keyboard.sKey);
 				}
 				else if (msg.wParam == 'D')
 				{
-					UpdateButton(msg.message == WM_KEYDOWN, sys.input->keyboard.dKey);
+					UpdateButton(isDown, sys.input->keyboard.dKey);
 				}
-			}
-			else if (msg.message == WM_KEYUP)
-			{
-				if (msg.wParam == 'W')
+				else if (msg.wParam == VK_UP)
 				{
-					UpdateButton(false, sys.input->keyboard.wKey);
+					UpdateButton(isDown, sys.input->keyboard.upKey);
 				}
-				else if (msg.wParam == 'A')
+				else if (msg.wParam == VK_LEFT)
 				{
-					UpdateButton(false, sys.input->keyboard.aKey);
+					UpdateButton(isDown, sys.input->keyboard.leftKey);
 				}
-				else if (msg.wParam == 'S')
+				else if (msg.wParam == VK_DOWN)
 				{
-					UpdateButton(false, sys.input->keyboard.sKey);
+					UpdateButton(isDown, sys.input->keyboard.downKey);
 				}
-				else if (msg.wParam == 'D')
+				else if (msg.wParam == VK_RIGHT)
 				{
-					UpdateButton(false, sys.input->keyboard.dKey);
+					UpdateButton(isDown, sys.input->keyboard.rightKey);
+				}
+				else if (msg.wParam == VK_RETURN)
+				{
+					UpdateButton(isDown, sys.input->keyboard.enterKey);
+				}
+				else if (msg.wParam == VK_ESCAPE)
+				{
+					UpdateButton(isDown, sys.input->keyboard.escKey);
 				}
 			}
 
@@ -378,6 +387,19 @@ DWORD WINAPI GameUpdateProc(void* param)
 				sys->input->controllers[i].rStickY = pad->sThumbRY;
 			}
 		}
+
+		//short test = GetAsyncKeyState('W');
+		//short test2 = test & 0xFF00;
+		//UpdateButton((int)GetAsyncKeyState('W') & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.wKey);
+		//UpdateButton((int)GetAsyncKeyState('A') & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.aKey);
+		//UpdateButton((int)GetAsyncKeyState('S') & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.sKey);
+		//UpdateButton((int)GetAsyncKeyState('D') & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.dKey);
+		//UpdateButton((int)GetAsyncKeyState(VK_UP) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.upKey);
+		//UpdateButton((int)GetAsyncKeyState(VK_LEFT) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.leftKey);
+		//UpdateButton((int)GetAsyncKeyState(VK_DOWN) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.downKey);
+		//UpdateButton((int)GetAsyncKeyState(VK_RIGHT) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.rightKey);
+		//UpdateButton((int)GetAsyncKeyState(VK_RETURN) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.enterKey);
+		//UpdateButton((int)GetAsyncKeyState(VK_ESCAPE) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.escKey);
 
 		GameUpdate(sys);
 		SleepConditionVariableCS(&TriggerGameUpdate, &GameUpdateLock, INFINITE);

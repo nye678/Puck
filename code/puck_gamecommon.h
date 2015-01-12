@@ -60,9 +60,17 @@ struct controllerState
 
 struct keyboardState
 {
-	button_state wKey, aKey, sKey, dKey;
-	button_state upKey, leftKey, downKey, rightKey;
-	button_state enterKey, escKey;
+	union {
+		button_state keys[10];
+
+		struct 
+		{
+			button_state wKey, aKey, sKey, dKey;
+			button_state upKey, leftKey, downKey, rightKey;
+			button_state enterKey, escKey;
+		};
+	};
+	
 
 	keyboardState()
 		: wKey(None), aKey(None), sKey(None), dKey(None),
@@ -70,6 +78,18 @@ struct keyboardState
 		  enterKey(None), escKey(None)
   	{}
 };
+
+void UpdateKeys(keyboardState* keyboard)
+{
+	size_t numButtons = sizeof(keyboard->keys) / sizeof(keyboard->keys[0]);
+	for (size_t i = 0; i < numButtons; ++i)
+	{
+		if (keyboard->keys[i] == Pressed)
+			keyboard->keys[i] = Held;
+		else if (keyboard->keys[i] == Released)
+			keyboard->keys[i] = None;
+	}
+}
 
 struct game_input
 {
