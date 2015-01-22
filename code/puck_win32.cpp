@@ -169,6 +169,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 	*/
 	InitializeGame(&sys);
 
+	sys.signalQuit = false;
 	running = true;
 
 	InitializeConditionVariable(&TriggerGameUpdate);
@@ -274,7 +275,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 			gamelib = LoadLibrary("puck_temp.dll");
 			InitializeGame = (InitializeGameFunc)GetProcAddress(gamelib, "InitializeGame");
 			GameUpdate = (GameUpdateFunc)GetProcAddress(gamelib, "GameUpdate");
-			
+
 			LeaveCriticalSection(&GameUpdateLock);	
 		
 			memcpy(&gamelibFileTime, &gamelibCurrentTime, sizeof(FILETIME));
@@ -341,6 +342,7 @@ int WinMain(HINSTANCE instance, HINSTANCE prevInstance, LPSTR cmdLine, int showC
 		}
 	}
 
+	WakeConditionVariable(&TriggerGameUpdate);
 	WaitForSingleObject(gameUpdateThread, INFINITE);
 	return 0;
 }
@@ -351,7 +353,7 @@ DWORD WINAPI GameUpdateProc(void* param)
 
 	EnterCriticalSection(&GameUpdateLock);
 	
-	while (true)
+	while (running)
 	{
 		/*
 			Poll the controller state.
@@ -388,24 +390,13 @@ DWORD WINAPI GameUpdateProc(void* param)
 			}
 		}
 
-		//short test = GetAsyncKeyState('W');
-		//short test2 = test & 0xFF00;
-		//UpdateButton((int)GetAsyncKeyState('W') & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.wKey);
-		//UpdateButton((int)GetAsyncKeyState('A') & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.aKey);
-		//UpdateButton((int)GetAsyncKeyState('S') & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.sKey);
-		//UpdateButton((int)GetAsyncKeyState('D') & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.dKey);
-		//UpdateButton((int)GetAsyncKeyState(VK_UP) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.upKey);
-		//UpdateButton((int)GetAsyncKeyState(VK_LEFT) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.leftKey);
-		//UpdateButton((int)GetAsyncKeyState(VK_DOWN) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.downKey);
-		//UpdateButton((int)GetAsyncKeyState(VK_RIGHT) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.rightKey);
-		//UpdateButton((int)GetAsyncKeyState(VK_RETURN) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.enterKey);
-		//UpdateButton((int)GetAsyncKeyState(VK_ESCAPE) & 0x0000FF00 == 0x0000FF00, sys->input->keyboard.escKey);
-
 		GameUpdate(sys);
+
 		SleepConditionVariableCS(&TriggerGameUpdate, &GameUpdateLock, INFINITE);
 
-		if (!running)
+		if (sys->signalQuit)
 		{
+			running = false;
 			break;
 		}
 	}

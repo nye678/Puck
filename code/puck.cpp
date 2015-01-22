@@ -1,8 +1,14 @@
 // Super Puck check list
-// Switch to checking a second player controller
-// p2 AI@
-// quit menu item doesn't work
+// Detect controllers for players
+// Game modes
+//		2p classic
+// 		2p doubles
+// 		4p ffa
+//		4p team doubles
+// p2,3,4 AI
 // no quit to main
+// material manager
+// special effects
 // analog stick menu move
 
 #include "puck_gamecommon.h"
@@ -205,10 +211,19 @@ extern "C" __declspec(dllexport) void GameUpdate(Systems* sys)
 	if (state->mainmenu)
 	{
 		if ((input->controllers[0].aButton == Released ||
-			input->keyboard.enterKey == Released) && startSelected)
+			input->keyboard.enterKey == Released))
 		{
-			state->mainmenu = false;
+			if (startSelected)
+			{
+				state->mainmenu = false;
+			}
+			else
+			{
+				sys->signalQuit = true;
+			}
 		}
+
+
 
 		if (input->controllers[0].down == Pressed ||
 			input->keyboard.wKey == Pressed ||

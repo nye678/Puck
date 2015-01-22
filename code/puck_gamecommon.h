@@ -132,6 +132,7 @@ struct Systems
 	game_input* input;
 	debug_tools* debug;
 	void* state;
+	bool signalQuit;
 };
 
 #endif
